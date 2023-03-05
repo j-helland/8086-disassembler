@@ -1,0 +1,9 @@
+# python
+venv/
+
+# cmake
+cmake-build*/
+
+# project
+.idea/
+include/
