@@ -307,6 +307,63 @@ static inline std::string_view str_register(u8 reg, bool wide) {
 }
 
 /**
+ * Handle mapping in Table 4-10 in the 8086 reference manual. Format calculated address and displacement.
+ */
+static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
+  std::string result;
+
+  if (instr.opcode == MOV_IMM_REG) {
+    // Immediate to register mov should only care about the data field.
+    result = std::to_string(instr.data);
+
+  } else if (instr.mod == MOD_REG_NO_DISP) {
+    // Register to register mov without displacement can just take the register value.
+    result = std::string(str_register(instr.rm, instr.wbit));
+
+  } else {
+    // Other cases involve a calculated register with potential displacement.
+    result = "[";
+    switch (instr.rm) {
+      case 0:
+        result += "bx + si";
+        break;
+      case 1:
+        result += "bx + di";
+        break;
+      case 2:
+        result += "bp + si";
+        break;
+      case 3:
+        result += "bp + di";
+        break;
+      case 4:
+        result += "si";
+        break;
+      case 5:
+        result += "di";
+        break;
+      case 6:
+        if (instr.mod > 0) result += "bp";
+        // TODO: unclear how to handle this
+        else result += "DIRECT_ADDRESS";
+        break;
+      case 7:
+        result += "bx";
+        break;
+
+      default:
+        throw std::invalid_argument("Invalid instruction r/m field");
+    }
+    if (instr.disp != 0) {
+      result += " + " + std::to_string(instr.disp);
+    }
+    result += "]";
+  }
+
+  return result;
+}
+
+/**
  * Print the ASM 8086 string representation of a parsed instruction to stdout.
  */
 static void print_instr(const Instruction &instr) {
@@ -314,61 +371,12 @@ static void print_instr(const Instruction &instr) {
     << str_opcode(instr.opcode)
     << " ";
 
-  std::string rm;
-  if (instr.mod == MOD_REG_NO_DISP && instr.opcode != MOV_IMM_REG) {
-    rm = str_register(instr.rm, instr.wbit);
+  std::string
+    src = str_reg_mem_field_encoding(instr),
+    dst = std::string(str_register(instr.reg, instr.wbit));
 
-  } else if (instr.opcode == MOV_IMM_REG) {
-    rm = std::to_string(instr.data);
-
-  } else {
-    rm += "[";
-    switch (instr.rm) {
-      case 0:
-        rm += "bx + si";
-        break;
-      case 1:
-        rm += "bx + di";
-        break;
-      case 2:
-        rm += "bp + si";
-        break;
-      case 3:
-        rm += "bp + di";
-        break;
-      case 4:
-        rm += "si";
-        break;
-      case 5:
-        rm += "di";
-        break;
-      case 6:
-        if (instr.mod > 0) rm += "bp";
-        else rm += "DIRECT_ADDRESS";
-        break;
-      case 7:
-        rm += "bx";
-        break;
-
-      default:
-        throw std::invalid_argument("Invalid instruction r/m field");
-    }
-    if (instr.disp != 0) {
-      rm += " + " + std::to_string(instr.disp);
-    }
-    rm += "]";
-  }
-
-  std::string src, dst;
-  if (instr.dbit) {
-    // reg is dst
-    dst = str_register(instr.reg, instr.wbit);
-    src = rm;
-  } else {
-    // reg is src
-    dst = rm;
-    src = str_register(instr.reg, instr.wbit);
-  }
+  // If D bit is not set, then reg field is the src.
+  if (!instr.dbit) std::swap(src, dst);
 
   std::cout
     << dst
