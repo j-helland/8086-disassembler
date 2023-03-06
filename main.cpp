@@ -4,7 +4,9 @@
 #include "cxxopts.h"  // I'm too lazy to write my own arg parsing logic.
 
 #define u8 uint8_t
+#define i8 int8_t
 #define u16 uint16_t
+#define i16 int16_t
 
 /**************************************************
  * Helper functions to parse ASM 8086 binary.
@@ -43,11 +45,11 @@ enum op_t : u8 {
   // Register/memory to register mov.
   MOV_RM         = 0x88,  // 1000 1000
 
-  // TODO
+  // Memory to accumulator mov. The AX register is the de facto accumulator register.
   MOV_MEM_TO_ACC = 0xa0,  // 1010 0000
+
+  // Accumulator to memory mov. The AX register is the de facto accumulator register.
   MOV_ACC_TO_MEM = 0xa2,  // 1010 0010
-  MOV_RM_TO_SEG  = 0x8e,  // 1000 1110
-  MOV_SEG_TO_RM  = 0x8c,  // 1000 1100
 
   OP_INVALID,
 };
@@ -90,26 +92,31 @@ struct Instruction {
   // Instruction register field. This could be either src or dst depending on the D bit.
   u8    reg;
 
-  // Register / memory field. This could be either the src or dst depending on the D bit.
+  // Register/memory field. This could be either the src or dst depending on the D bit.
   u8    rm;
 
-  /* W bit. Used to specify byte or word-length for various properties.
+  /* W bit. Specifies whether this is a byte or word operation.
    * <p>- Dictates whether registers are half or full width.
    * <p>- Dictates whether the data field is byte or word length.
    */
   bool  wbit;
 
-  /* D bit.
+  /* D bit. Specifies the "direction" of the operation.
    * <p> true: reg field is the dst.
    * <p> false: reg field is the src.
    */
   bool  dbit;
 
   // Displacement data. Used for calculating an address offset. Could be byte or word length depending on the mod field.
-  u16   disp;
+  i16   disp;
 
-  // Data for use in immediate-mode. Could be signed.
-  u16   data;
+  union {
+    // Data for use in immediate-mode. Could be signed.
+    u16 data;
+
+    // Memory address (offset from 0).
+    u16 addr;
+  };
 };
 
 /**************************************************
@@ -122,7 +129,7 @@ struct Instruction {
 static inline u16 parse_data(std::istreambuf_iterator<char> &byte_stream, bool word) {
   u16
     lo = (u8)*byte_stream,
-    hi = word
+    hi = (word)
          ? *(++byte_stream)
          : 0;
   return (hi << 8*sizeof(u8)) | lo;
@@ -133,16 +140,24 @@ static inline u16 parse_data(std::istreambuf_iterator<char> &byte_stream, bool w
  * word-length.
  *
  * @param mod Instruction mode.
+ * @return Signed displacement value.
  */
-static u16 parse_displacement(std::istreambuf_iterator<char> &byte_stream, mod_t mod) {
+static i16 parse_displacement(std::istreambuf_iterator<char> &byte_stream, mod_t mod) {
   switch (mod) {
     case MOD_MEM_BYTE_DISP: // fallthru
-    case MOD_MEM_WORD_DISP:
-      return parse_data(++byte_stream, mod == MOD_MEM_WORD_DISP);
+    case MOD_MEM_WORD_DISP: {
+      const u16 disp = parse_data(++byte_stream, mod == MOD_MEM_WORD_DISP);
+      if (mod == MOD_MEM_BYTE_DISP) return (i8) disp;
+      return (i16) disp;
+    }
 
     default:
       return 0;
   }
+}
+
+static bool is_direct_addressing_mode(mod_t mod, u8 rm) {
+  return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
 /**
@@ -157,7 +172,7 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
     .reg = 0,
     .rm = 0,
     .wbit = false,
-    .dbit = true,  // default true so immediate mode has correct dst,src.
+    .dbit = false,
     .disp = 0,
     .data = 0,
   };
@@ -166,11 +181,10 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
     case MOV_IMM_REG: {
       instr.opcode = MOV_IMM_REG;
       instr.wbit = asm8086_wbit(first_byte, 3);
+      instr.dbit = true;
       instr.reg = asm8086_reg(first_byte);
       instr.mod = MOD_REG_NO_DISP;
       instr.data = parse_data(++byte_stream, instr.wbit);
-
-      byte_stream++;
       break;
     }
 
@@ -185,9 +199,16 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
           instr.mod = (mod_t) asm8086_mode(second_byte);
           instr.reg = asm8086_reg(second_byte, 3);
           instr.rm = asm8086_rm(second_byte);
-          instr.disp = parse_displacement(byte_stream, instr.mod);
 
-          byte_stream++;
+          if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+            // Direct-addressing mode: parse the memory address value.
+            instr.addr = parse_data(++byte_stream, instr.wbit);
+
+          } else {
+            // Regular displacement parsing.
+            instr.disp = parse_displacement(byte_stream, instr.mod);
+          }
+
           break;
         }
 
@@ -196,6 +217,7 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
             case MOV_IMM_MEM: {
               instr.opcode = MOV_IMM_MEM;
               instr.wbit = asm8086_wbit(first_byte);
+              instr.dbit = false;
 
               const u8 second_byte = *(++byte_stream);
               instr.mod = (mod_t) asm8086_mode(second_byte);
@@ -203,7 +225,22 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
               instr.disp = parse_displacement(byte_stream, instr.mod);
               instr.data = parse_data(++byte_stream, instr.wbit);
 
-              byte_stream++;
+              break;
+            }
+
+            case MOV_ACC_TO_MEM: {
+              instr.opcode = MOV_ACC_TO_MEM;
+              instr.wbit = asm8086_wbit(first_byte);
+              instr.dbit = false;
+              instr.addr = parse_data(++byte_stream, true);
+              break;
+            }
+
+            case MOV_MEM_TO_ACC: {
+              instr.opcode = MOV_MEM_TO_ACC;
+              instr.wbit = asm8086_wbit(first_byte);
+              instr.dbit = true;
+              instr.addr = parse_data(++byte_stream, true);
               break;
             }
 
@@ -217,6 +254,7 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
     }
   }
 
+  ++byte_stream;
   return instr;
 }
 
@@ -252,8 +290,10 @@ static constexpr std::string_view
  */
 static std::string_view str_opcode(op_t op) {
   switch (op) {
-    case MOV_IMM_REG:  // fallthru
-    case MOV_IMM_MEM:  // fallthru
+    case MOV_IMM_REG:    // fallthru
+    case MOV_IMM_MEM:    // fallthru
+    case MOV_MEM_TO_ACC: // fallthru
+    case MOV_ACC_TO_MEM: // fallthru
     case MOV_RM:
       return MOV_STR;
     default: { throw std::invalid_argument("Invalid opcode"); }
@@ -320,6 +360,9 @@ static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
     // Register to register mov without displacement can just take the register value.
     result = std::string(str_register(instr.rm, instr.wbit));
 
+  } else if (is_direct_addressing_mode(instr.mod, instr.rm) || instr.opcode == MOV_ACC_TO_MEM || instr.opcode == MOV_MEM_TO_ACC) {
+    result = "[" + std::to_string(instr.addr) + "]";
+
   } else {
     // Other cases involve a calculated register with potential displacement.
     result = "[";
@@ -343,9 +386,8 @@ static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
         result += "di";
         break;
       case 6:
-        if (instr.mod > 0) result += "bp";
-        // TODO: unclear how to handle this
-        else result += "DIRECT_ADDRESS";
+        // We already handled the direct addressing mode special case above.
+        result += "bp";
         break;
       case 7:
         result += "bx";
@@ -354,8 +396,13 @@ static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
       default:
         throw std::invalid_argument("Invalid instruction r/m field");
     }
+
+    // Add the displacement to the reg field. We must account for the fact that the displacement field is signed when
+    // we choose an arithmetic operator.
     if (instr.disp != 0) {
-      result += " + " + std::to_string(instr.disp);
+      if (instr.disp < 0) result += " - ";
+      else result += " + ";
+      result += std::to_string(abs(instr.disp));
     }
     result += "]";
   }
@@ -373,7 +420,9 @@ static void print_instr(const Instruction &instr) {
 
   std::string
     src = str_reg_mem_field_encoding(instr),
-    dst = std::string(str_register(instr.reg, instr.wbit));
+    dst = (instr.opcode == MOV_IMM_MEM)
+      ? ((instr.data <= 0xff) ? "byte " : "word ") + std::to_string(instr.data)
+      : std::string(str_register(instr.reg, instr.wbit));
 
   // If D bit is not set, then reg field is the src.
   if (!instr.dbit) std::swap(src, dst);
