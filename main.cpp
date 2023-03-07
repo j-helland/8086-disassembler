@@ -1,8 +1,6 @@
 #include <iostream>
 #include <fstream>
 
-#include "cxxopts.h"  // I'm too lazy to write my own arg parsing logic.
-
 #define u8 uint8_t
 #define i8 int8_t
 #define u16 uint16_t
@@ -437,20 +435,23 @@ static void print_instr(const Instruction &instr) {
 /**************************************************
  * Main application flow.
  **************************************************/
-static cxxopts::ParseResult parse_opts(int argc, char **argv) {
-  cxxopts::Options options("disassembler", "disassemble 8086 binary");
-  options.add_options()
-    ("f,file", "File path", cxxopts::value<std::string>());
-  return options.parse(argc, argv);
+struct UserOpts {
+  std::string fpath;
+};
+
+static UserOpts parse_opts(int argc, char **argv) {
+  if (argc != 2) throw std::invalid_argument("Expected 1 argument");
+  return {
+    .fpath = std::string(argv[1]),
+  };
 }
 
 int main(int argc, char **argv) {
   // Parse commandline args.
-  const auto opts = parse_opts(argc, argv);
+  const UserOpts opts = parse_opts(argc, argv);
 
   // Read binary into buffer.
-  const std::string fpath = opts["file"].as<std::string>();
-  std::ifstream input(fpath, std::ios::binary);
+  std::ifstream input(opts.fpath, std::ios::binary);
   std::istreambuf_iterator<char> byte_stream(input);
   const std::istreambuf_iterator<char> end;
 

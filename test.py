@@ -34,7 +34,7 @@ if __name__ == "__main__":
             # Run assembly and disassembly.
             subprocess.call(["nasm", file_path, "-o", result_file.name])
             subprocess.call(
-                [args.executable, "-f", result_file.name],
+                [args.executable, result_file.name],
                 stdout=disassembly_file.file)
 
             # Assemble the disassembly file.
