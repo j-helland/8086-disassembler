@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <unordered_map>
 
 #define u8 uint8_t
 #define i8 int8_t
@@ -34,33 +35,41 @@ static inline u8 asm8086_rm(u8 byte)                { return ASM8086_RM_MASK & b
  * Opcodes are right-padded to a full byte to avoid an extra bitshift during parsing.
  */
 enum op_t : u8 {
+  /**
+   * mov
+   */
   // Immediate-mode to register mov.
   MOV_IMM_REG    = 0xb0,  // 1011 0000
-
   // Immediate-mode to register/memory mov.
   MOV_IMM_MEM    = 0xc6,  // 1100 0110
-
   // Register/memory to register mov.
   MOV_RM         = 0x88,  // 1000 1000
-
   // Memory to accumulator mov. The AX register is the de facto accumulator register.
   MOV_MEM_TO_ACC = 0xa0,  // 1010 0000
-
   // Accumulator to memory mov. The AX register is the de facto accumulator register.
   MOV_ACC_TO_MEM = 0xa2,  // 1010 0010
+
+  // TODO
+  /**
+   * push
+   */
+  PUSH_RM        = 0xff,  // 1111 1111
+  PUSH_REG       = 0x28,  // 0010 1000
 
   OP_INVALID,
 };
 
-enum OpcodeMasks : u8 {
-  // Portion of the byte corresponding to an immediate-mode to register mov.
-  MASK_MOV_IMM_REG = 0xf0,
-
-  // Portion of the byte corresponding to a register/memory to register mov.
-  MASK_MOV_RM = 0xfc,
-
-  // For when the other masks don't apply.
-  MASK_MOV_DEFAULT = 0xfe,
+/**
+ * The opcode masks are used to select chunks of a byte that may contain various opcode values. These must be checked in
+ * descending order to ensure we don't prematurely truncate an opcade chunk and mistake it for the wrong opcode value.
+ * For example, this can happen with accumulator mov, where the high 6 bits of mem to acc and acc to mem are the same.
+ */
+static constexpr u8 OPCODE_MASKS[] {
+  0xff,  // 1111 1111
+  0xfe,  // 1111 1110
+  0xfc,  // 1111 1100
+  0xf8,  // 1111 1000
+  0xf0,  // 1111 0000
 };
 
 enum mod_t : u8 {
@@ -158,102 +167,98 @@ static bool is_direct_addressing_mode(mod_t mod, u8 rm) {
   return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
+static Instruction parse_mov_imm_reg(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+  const bool wbit = asm8086_wbit(first_byte, 3);
+  return {
+    .opcode = MOV_IMM_REG,
+    .mod = MOD_REG_NO_DISP,
+    .reg = asm8086_reg(first_byte),
+    .wbit = wbit,
+    .dbit = true,
+    .data = parse_data(++byte_stream, wbit),
+  };
+}
+
+static Instruction parse_mov_rm(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+  const u8 second_byte = *(++byte_stream);
+  Instruction instr {
+    .opcode = MOV_RM,
+    .mod = (mod_t) asm8086_mode(second_byte),
+    .reg = asm8086_reg(second_byte, 3),
+    .rm = asm8086_rm(second_byte),
+    .wbit = asm8086_wbit(first_byte),
+    .dbit = asm8086_dbit(first_byte),
+  };
+
+  // Handle direct addressing mode.
+  if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+    instr.addr = parse_data(++byte_stream, instr.wbit);
+  } else {
+    instr.disp = parse_displacement(byte_stream, instr.mod);
+  }
+
+  return instr;
+}
+
+static inline Instruction parse_mov_imm_mem(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+  const u8 second_byte = *(++byte_stream);
+  const auto mod = (mod_t) asm8086_mode(second_byte);
+  const bool wbit = asm8086_wbit(first_byte);
+  return {
+    .opcode = MOV_IMM_MEM,
+    .mod = mod,
+    .rm = asm8086_rm(second_byte),
+    .wbit = wbit,
+    .dbit = false,
+    .disp = parse_displacement(byte_stream, mod),
+    .data = parse_data(++byte_stream, wbit),
+  };
+}
+
+static inline Instruction parse_mov_acc_to_mem(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = MOV_ACC_TO_MEM,
+    .wbit = asm8086_wbit(first_byte),
+    .dbit = false,
+    .addr = parse_data(++byte_stream, true),
+  };
+}
+
+static inline Instruction parse_mov_mem_to_acc(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = MOV_MEM_TO_ACC,
+    .wbit = asm8086_wbit(first_byte),
+    .dbit = true,
+    .addr = parse_data(++byte_stream, true),
+  };
+}
+
+typedef Instruction (*ParseFunc)(u8 first_byte, std::istreambuf_iterator<char> &byte_stream);
+
+static const std::unordered_map<op_t, ParseFunc> PARSER_REGISTRY {
+  { MOV_IMM_REG, &parse_mov_imm_reg },
+  { MOV_IMM_MEM, &parse_mov_imm_mem },
+  { MOV_RM, &parse_mov_rm },
+  { MOV_ACC_TO_MEM, &parse_mov_acc_to_mem },
+  { MOV_MEM_TO_ACC, &parse_mov_mem_to_acc },
+};
+
 /**
  * Parse a potentially multi-byte instruction sequence from the byte stream.
  */
 static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream) {
   const u8 first_byte = *byte_stream;
 
-  Instruction instr {
-    .opcode = OP_INVALID,
-    .mod = MOD_INVALID,
-    .reg = 0,
-    .rm = 0,
-    .wbit = false,
-    .dbit = false,
-    .disp = 0,
-    .data = 0,
-  };
+  for (u8 mask : OPCODE_MASKS) {
+    const op_t op = static_cast<op_t>(mask & first_byte);
+    if (!PARSER_REGISTRY.contains(op)) continue;
 
-  switch (MASK_MOV_IMM_REG & first_byte) {
-    case MOV_IMM_REG: {
-      instr.opcode = MOV_IMM_REG;
-      instr.wbit = asm8086_wbit(first_byte, 3);
-      instr.dbit = true;
-      instr.reg = asm8086_reg(first_byte);
-      instr.mod = MOD_REG_NO_DISP;
-      instr.data = parse_data(++byte_stream, instr.wbit);
-      break;
-    }
-
-    default: {
-      switch (MASK_MOV_RM & first_byte) {
-        case MOV_RM: {
-          instr.opcode = MOV_RM;
-          instr.wbit = asm8086_wbit(first_byte);
-          instr.dbit = asm8086_dbit(first_byte);
-
-          const u8 second_byte = *(++byte_stream);
-          instr.mod = (mod_t) asm8086_mode(second_byte);
-          instr.reg = asm8086_reg(second_byte, 3);
-          instr.rm = asm8086_rm(second_byte);
-
-          if (is_direct_addressing_mode(instr.mod, instr.rm)) {
-            // Direct-addressing mode: parse the memory address value.
-            instr.addr = parse_data(++byte_stream, instr.wbit);
-
-          } else {
-            // Regular displacement parsing.
-            instr.disp = parse_displacement(byte_stream, instr.mod);
-          }
-
-          break;
-        }
-
-        default: {
-          switch (MASK_MOV_DEFAULT & first_byte) {
-            case MOV_IMM_MEM: {
-              instr.opcode = MOV_IMM_MEM;
-              instr.wbit = asm8086_wbit(first_byte);
-              instr.dbit = false;
-
-              const u8 second_byte = *(++byte_stream);
-              instr.mod = (mod_t) asm8086_mode(second_byte);
-              instr.rm = asm8086_rm(second_byte);
-              instr.disp = parse_displacement(byte_stream, instr.mod);
-              instr.data = parse_data(++byte_stream, instr.wbit);
-
-              break;
-            }
-
-            case MOV_ACC_TO_MEM: {
-              instr.opcode = MOV_ACC_TO_MEM;
-              instr.wbit = asm8086_wbit(first_byte);
-              instr.dbit = false;
-              instr.addr = parse_data(++byte_stream, true);
-              break;
-            }
-
-            case MOV_MEM_TO_ACC: {
-              instr.opcode = MOV_MEM_TO_ACC;
-              instr.wbit = asm8086_wbit(first_byte);
-              instr.dbit = true;
-              instr.addr = parse_data(++byte_stream, true);
-              break;
-            }
-
-            default: {
-              printf("opcode %x\n", first_byte);
-              throw std::invalid_argument("[parse_opcode] Invalid opcode byte");
-            }
-          }
-        }
-      }
-    }
+    const Instruction instr = PARSER_REGISTRY.at(op)(first_byte, byte_stream);
+    ++byte_stream;
+    return instr;
   }
 
-  ++byte_stream;
-  return instr;
+  throw std::invalid_argument("Invalid opcode byte");
 }
 
 /**************************************************
