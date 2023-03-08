@@ -260,12 +260,20 @@ static inline Instruction parse_push_rm(std::istreambuf_iterator<char> &byte_str
   const u8 second_byte = *(++byte_stream);
   const auto mod = (mod_t) asm8086_mode(second_byte);
 
-  return {
+  Instruction instr {
     .opcode = PUSH_RM,
     .mod = mod,
     .rm = asm8086_rm(second_byte),
-    .disp = parse_displacement(byte_stream, mod),
+//    .disp = parse_displacement(byte_stream, mod),
   };
+
+  if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+    instr.addr = parse_data(++byte_stream, true);
+  } else {
+    instr.disp = parse_displacement(byte_stream, instr.mod);
+  }
+
+  return instr;
 }
 
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
