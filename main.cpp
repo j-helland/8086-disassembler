@@ -130,6 +130,11 @@ struct Instruction {
  * Core instruction parsing logic.
  **************************************************/
 /**
+ * All instruction parsing functions will adhere to this type.
+ */
+typedef Instruction (*InstrParseFunc)(u8 first_byte, std::istreambuf_iterator<char> &byte_stream);
+
+/**
  * Parse either a byte or word-length chunk of the byte stream. It is assumed according to the ASM 8086 spec that the
  * second byte contains the high bits of the data.
  */
@@ -233,9 +238,7 @@ static inline Instruction parse_mov_mem_to_acc(u8 first_byte, std::istreambuf_it
   };
 }
 
-typedef Instruction (*ParseFunc)(u8 first_byte, std::istreambuf_iterator<char> &byte_stream);
-
-static const std::unordered_map<op_t, ParseFunc> PARSER_REGISTRY {
+static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { MOV_IMM_REG, &parse_mov_imm_reg },
   { MOV_IMM_MEM, &parse_mov_imm_mem },
   { MOV_RM, &parse_mov_rm },
@@ -249,11 +252,15 @@ static const std::unordered_map<op_t, ParseFunc> PARSER_REGISTRY {
 static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream) {
   const u8 first_byte = *byte_stream;
 
+  // The opcode masks are handled in descending order to avoid truncating the byte prematurely. Otherwise, we could pick
+  // the wrong opcode value.
   for (u8 mask : OPCODE_MASKS) {
     const op_t op = static_cast<op_t>(mask & first_byte);
     if (!PARSER_REGISTRY.contains(op)) continue;
 
+    // Parse.
     const Instruction instr = PARSER_REGISTRY.at(op)(first_byte, byte_stream);
+    // Move the byte stream to the next byte or EOF.
     ++byte_stream;
     return instr;
   }
