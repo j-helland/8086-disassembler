@@ -35,9 +35,7 @@ static inline u8 asm8086_rm(u8 byte)                { return ASM8086_RM_MASK & b
  * Opcodes are right-padded to a full byte to avoid an extra bitshift during parsing.
  */
 enum op_t : u8 {
-  /**
-   * mov
-   */
+  /** mov */
   // Immediate-mode to register mov.
   MOV_IMM_REG    = 0xb0,  // 1011 0000
   // Immediate-mode to register/memory mov.
@@ -49,23 +47,23 @@ enum op_t : u8 {
   // Accumulator to memory mov. The AX register is the de facto accumulator register.
   MOV_ACC_TO_MEM = 0xa2,  // 1010 0010
 
-  /**
-   * push
-   */
+  /** push */
   PUSH_RM        = 0xff,  // 1111 1111
   PUSH_REG       = 0x50,  // 0101 0000
 
-  /**
-   * pop
-   */
+  /** pop */
   POP_RM         = 0x8f,  // 1000 1111
   POP_REG        = 0x58,  // 0101 1000
 
-  /**
-   * xchg
-   */
+  /** xchg */
   XCHG_RM        = 0x86, // 1000 0110
   XCHG_REG_ACC   = 0x90, // 1001 0000
+
+  /** in/out */
+  IN_FIX         = 0xe4, // 1110 0100
+  IN_VAR         = 0xec, // 1110 1100
+  OUT_FIX        = 0xe6, // 1110 0110
+  OUT_VAR        = 0xee, // 1110 1110
 
   OP_INVALID,
 };
@@ -339,6 +337,44 @@ static inline Instruction parse_xchg_reg_acc(std::istreambuf_iterator<char> &byt
   };
 }
 
+static inline Instruction parse_in_fix(std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = IN_FIX,
+    .mod    = MOD_REG_NO_DISP,
+    .reg    = AX,
+    .wbit   = asm8086_wbit(*byte_stream),
+    .data   = parse_data(++byte_stream, false),
+  };
+}
+
+static inline Instruction parse_in_var(std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = IN_VAR,
+    .mod = MOD_REG_NO_DISP,
+    .reg = AX,
+    .wbit = asm8086_wbit(*byte_stream),
+  };
+}
+
+static inline Instruction parse_out_fix(std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = OUT_FIX,
+    .mod    = MOD_REG_NO_DISP,
+    .reg    = AX,
+    .wbit   = asm8086_wbit(*byte_stream),
+    .data   = parse_data(++byte_stream, false),
+  };
+}
+
+static inline Instruction parse_out_var(std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = OUT_VAR,
+    .mod = MOD_REG_NO_DISP,
+    .reg = AX,
+    .wbit = asm8086_wbit(*byte_stream),
+  };
+}
+
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   // mov
   { MOV_IMM_REG,    &parse_mov_imm_reg },
@@ -358,6 +394,12 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   // xchg
   { XCHG_RM,        &parse_xchg_rm },
   { XCHG_REG_ACC,   &parse_xchg_reg_acc },
+
+  // in / out
+  { IN_FIX,         &parse_in_fix },
+  { IN_VAR,         &parse_in_var },
+  { OUT_FIX,        &parse_out_fix },
+  { OUT_VAR,        &parse_out_var },
 };
 
 /**
@@ -398,6 +440,8 @@ static constexpr std::string_view
   PUSH_STR = "push",
   POP_STR  = "pop",
   XCHG_STR = "xchg",
+  IN_STR   = "in",
+  OUT_STR  = "out",
 
   // half word-length registers
   AL_STR = "al",
@@ -446,6 +490,16 @@ static std::string_view str_opcode(op_t op) {
     case XCHG_RM: // fallthru
     case XCHG_REG_ACC:
       return XCHG_STR;
+
+    // in
+    case IN_FIX: // fallthru
+    case IN_VAR:
+      return IN_STR;
+
+    // out
+    case OUT_FIX: // fallthru
+    case OUT_VAR:
+      return OUT_STR;
 
     default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
@@ -638,6 +692,26 @@ static void print_xchg(const Instruction &instr) {
     << std::endl;
 }
 
+static void print_in_out(const Instruction &instr) {
+  std::cout
+    << str_opcode(instr.opcode)
+    << " ";
+
+  std::string
+    src = std::string(str_register(instr.reg, instr.wbit)),
+    dst = (instr.opcode == IN_FIX || instr.opcode == OUT_FIX)
+          ? std::to_string(instr.data)
+          : std::string(DX_STR);
+
+  if (instr.opcode == OUT_FIX || instr.opcode == OUT_VAR) std::swap(src, dst);
+
+  std::cout
+    << src
+    << ", "
+    << dst
+    << std::endl;
+}
+
 static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGISTERY {
   // mov
   { MOV_IMM_REG,     &print_mov },
@@ -657,6 +731,12 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   // xchg
   { XCHG_RM,        &print_xchg },
   { XCHG_REG_ACC,   &print_xchg },
+
+  // in/out
+  { IN_FIX,  &print_in_out },
+  { IN_VAR,  &print_in_out },
+  { OUT_FIX, &print_in_out },
+  { OUT_VAR, &print_in_out },
 };
 
 static void print_instr(const Instruction &instr) {
