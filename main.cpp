@@ -55,6 +55,12 @@ enum op_t : u8 {
   PUSH_RM        = 0xff,  // 1111 1111
   PUSH_REG       = 0x50,  // 0101 0000
 
+  /**
+   * pop
+   */
+  POP_RM         = 0x8f,  // 1000 1111
+  POP_REG        = 0x58,  // 0101 1000
+
   OP_INVALID,
 };
 
@@ -248,23 +254,44 @@ static inline Instruction parse_mov_mem_to_acc(std::istreambuf_iterator<char> &b
 }
 
 static inline Instruction parse_push_reg(std::istreambuf_iterator<char> &byte_stream) {
-  const u8 first_byte = *byte_stream;
-
   return {
     .opcode = PUSH_REG,
-    .reg    = asm8086_reg(first_byte),
+    .reg    = asm8086_reg(*byte_stream),
   };
 }
 
 static inline Instruction parse_push_rm(std::istreambuf_iterator<char> &byte_stream) {
   const u8 second_byte = *(++byte_stream);
-  const auto mod = (mod_t) asm8086_mode(second_byte);
 
   Instruction instr {
     .opcode = PUSH_RM,
-    .mod = mod,
+    .mod = (mod_t) asm8086_mode(second_byte),
     .rm = asm8086_rm(second_byte),
-//    .disp = parse_displacement(byte_stream, mod),
+  };
+
+  if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+    instr.addr = parse_data(++byte_stream, true);
+  } else {
+    instr.disp = parse_displacement(byte_stream, instr.mod);
+  }
+
+  return instr;
+}
+
+static inline Instruction parse_pop_reg(std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = POP_REG,
+    .reg    = asm8086_reg(*byte_stream),
+  };
+}
+
+static inline Instruction parse_pop_rm(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 second_byte = *(++byte_stream);
+
+  Instruction instr {
+    .opcode = POP_RM,
+    .mod = (mod_t) asm8086_mode(second_byte),
+    .rm = asm8086_rm(second_byte),
   };
 
   if (is_direct_addressing_mode(instr.mod, instr.rm)) {
@@ -286,7 +313,11 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
 
   // push
   { PUSH_REG,       &parse_push_reg },
-  { PUSH_RM,        &parse_push_rm }
+  { PUSH_RM,        &parse_push_rm },
+
+  // pop
+  { POP_REG,        &parse_pop_reg },
+  { POP_RM,         &parse_pop_rm },
 };
 
 /**
@@ -325,6 +356,7 @@ static constexpr std::string_view
   // opcodes
   MOV_STR  = "mov",
   PUSH_STR = "push",
+  POP_STR  = "pop",
 
   // half word-length registers
   AL_STR = "al",
@@ -363,6 +395,11 @@ static std::string_view str_opcode(op_t op) {
     case PUSH_RM: // fallthru
     case PUSH_REG:
       return PUSH_STR;
+
+    // pop
+    case POP_RM: // fallthru
+    case POP_REG:
+      return POP_STR;
 
     default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
@@ -508,20 +545,22 @@ static void print_mov(const Instruction &instr) {
     << std::endl;
 }
 
-static void print_push(const Instruction &instr) {
+static void print_push_pop(const Instruction &instr) {
   std::cout
     << str_opcode(instr.opcode)
     << " ";
 
   switch (instr.opcode) {
-    case PUSH_REG:
+    case PUSH_REG: // fallthru
+    case POP_REG:
       std::cout
         // Half register push is not supported by the ASM 8086 standard.
         << str_register(instr.reg, true)
         << std::endl;
       break;
 
-    case PUSH_RM:
+    case PUSH_RM: // fallthru
+    case POP_RM:
       std::cout
         // Byte sized push is not supported by tha ASM 8086 standard.
         << "word "
@@ -542,8 +581,12 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { MOV_MEM_TO_ACC, &print_mov },
 
   // push
-  { PUSH_REG, &print_push },
-  { PUSH_RM,  &print_push },
+  { PUSH_REG, &print_push_pop },
+  { PUSH_RM,  &print_push_pop },
+
+  // pop
+  { POP_REG,  &print_push_pop },
+  { POP_RM,   &print_push_pop },
 };
 
 static void print_instr(const Instruction &instr) {
