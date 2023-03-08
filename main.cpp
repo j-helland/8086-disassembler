@@ -49,12 +49,11 @@ enum op_t : u8 {
   // Accumulator to memory mov. The AX register is the de facto accumulator register.
   MOV_ACC_TO_MEM = 0xa2,  // 1010 0010
 
-  // TODO
   /**
    * push
    */
   PUSH_RM        = 0xff,  // 1111 1111
-  PUSH_REG       = 0x28,  // 0010 1000
+  PUSH_REG       = 0x50,  // 0101 0000
 
   OP_INVALID,
 };
@@ -132,7 +131,7 @@ struct Instruction {
 /**
  * All instruction parsing functions will adhere to this type.
  */
-typedef Instruction (*InstrParseFunc)(u8 first_byte, std::istreambuf_iterator<char> &byte_stream);
+typedef Instruction (*InstrParseFunc)(std::istreambuf_iterator<char> &byte_stream);
 
 /**
  * Parse either a byte or word-length chunk of the byte stream. It is assumed according to the ASM 8086 spec that the
@@ -172,27 +171,31 @@ static bool is_direct_addressing_mode(mod_t mod, u8 rm) {
   return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
-static Instruction parse_mov_imm_reg(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+static Instruction parse_mov_imm_reg(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte = *byte_stream;
   const bool wbit = asm8086_wbit(first_byte, 3);
+
   return {
     .opcode = MOV_IMM_REG,
-    .mod = MOD_REG_NO_DISP,
-    .reg = asm8086_reg(first_byte),
-    .wbit = wbit,
-    .dbit = true,
-    .data = parse_data(++byte_stream, wbit),
+    .mod    = MOD_REG_NO_DISP,
+    .reg    = asm8086_reg(first_byte),
+    .wbit   = wbit,
+    .dbit   = true,
+    .data   = parse_data(++byte_stream, wbit),
   };
 }
 
-static Instruction parse_mov_rm(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
-  const u8 second_byte = *(++byte_stream);
+static Instruction parse_mov_rm(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte = *byte_stream,
+           second_byte = *(++byte_stream);
+
   Instruction instr {
     .opcode = MOV_RM,
-    .mod = (mod_t) asm8086_mode(second_byte),
-    .reg = asm8086_reg(second_byte, 3),
-    .rm = asm8086_rm(second_byte),
-    .wbit = asm8086_wbit(first_byte),
-    .dbit = asm8086_dbit(first_byte),
+    .mod    = (mod_t) asm8086_mode(second_byte),
+    .reg    = asm8086_reg(second_byte, 3),
+    .rm     = asm8086_rm(second_byte),
+    .wbit   = asm8086_wbit(first_byte),
+    .dbit   = asm8086_dbit(first_byte),
   };
 
   // Handle direct addressing mode.
@@ -205,45 +208,77 @@ static Instruction parse_mov_rm(u8 first_byte, std::istreambuf_iterator<char> &b
   return instr;
 }
 
-static inline Instruction parse_mov_imm_mem(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
-  const u8 second_byte = *(++byte_stream);
+static inline Instruction parse_mov_imm_mem(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte = *byte_stream,
+           second_byte = *(++byte_stream);
   const auto mod = (mod_t) asm8086_mode(second_byte);
   const bool wbit = asm8086_wbit(first_byte);
+
   return {
     .opcode = MOV_IMM_MEM,
-    .mod = mod,
-    .rm = asm8086_rm(second_byte),
-    .wbit = wbit,
-    .dbit = false,
-    .disp = parse_displacement(byte_stream, mod),
-    .data = parse_data(++byte_stream, wbit),
+    .mod    = mod,
+    .rm     = asm8086_rm(second_byte),
+    .wbit   = wbit,
+    .dbit   = false,
+    .disp   = parse_displacement(byte_stream, mod),
+    .data   = parse_data(++byte_stream, wbit),
   };
 }
 
-static inline Instruction parse_mov_acc_to_mem(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_mov_acc_to_mem(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte = *byte_stream;
+
   return {
     .opcode = MOV_ACC_TO_MEM,
-    .wbit = asm8086_wbit(first_byte),
-    .dbit = false,
-    .addr = parse_data(++byte_stream, true),
+    .wbit   = asm8086_wbit(first_byte),
+    .dbit   = false,
+    .addr   = parse_data(++byte_stream, true),
   };
 }
 
-static inline Instruction parse_mov_mem_to_acc(u8 first_byte, std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_mov_mem_to_acc(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte = *byte_stream;
+
   return {
     .opcode = MOV_MEM_TO_ACC,
-    .wbit = asm8086_wbit(first_byte),
-    .dbit = true,
-    .addr = parse_data(++byte_stream, true),
+    .wbit   = asm8086_wbit(first_byte),
+    .dbit   = true,
+    .addr   = parse_data(++byte_stream, true),
+  };
+}
+
+static inline Instruction parse_push_reg(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte = *byte_stream;
+
+  return {
+    .opcode = PUSH_REG,
+    .reg    = asm8086_reg(first_byte),
+  };
+}
+
+static inline Instruction parse_push_rm(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 second_byte = *(++byte_stream);
+  const auto mod = (mod_t) asm8086_mode(second_byte);
+
+  return {
+    .opcode = PUSH_RM,
+    .mod = mod,
+    .rm = asm8086_rm(second_byte),
+    .disp = parse_displacement(byte_stream, mod),
   };
 }
 
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
-  { MOV_IMM_REG, &parse_mov_imm_reg },
-  { MOV_IMM_MEM, &parse_mov_imm_mem },
-  { MOV_RM, &parse_mov_rm },
+  // mov
+  { MOV_IMM_REG,    &parse_mov_imm_reg },
+  { MOV_IMM_MEM,    &parse_mov_imm_mem },
+  { MOV_RM,         &parse_mov_rm },
   { MOV_ACC_TO_MEM, &parse_mov_acc_to_mem },
   { MOV_MEM_TO_ACC, &parse_mov_mem_to_acc },
+
+  // push
+  { PUSH_REG,       &parse_push_reg },
+  { PUSH_RM,        &parse_push_rm }
 };
 
 /**
@@ -259,21 +294,29 @@ static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream
     if (!PARSER_REGISTRY.contains(op)) continue;
 
     // Parse.
-    const Instruction instr = PARSER_REGISTRY.at(op)(first_byte, byte_stream);
+    const Instruction instr = PARSER_REGISTRY.at(op)(byte_stream);
     // Move the byte stream to the next byte or EOF.
     ++byte_stream;
     return instr;
   }
 
-  throw std::invalid_argument("Invalid opcode byte");
+  printf("%x\n", first_byte);
+
+  throw std::invalid_argument("[parse_instruction] Invalid opcode byte");
 }
 
 /**************************************************
  * Parser string conversion utilities.
  **************************************************/
+/**
+ * All instruction printing functions will adhere to this signature.
+ */
+typedef void (*PrintInstruction)(const Instruction &);
+
 static constexpr std::string_view
   // opcodes
-  MOV_STR = "mov",
+  MOV_STR  = "mov",
+  PUSH_STR = "push",
 
   // half word-length registers
   AL_STR = "al",
@@ -300,13 +343,20 @@ static constexpr std::string_view
  */
 static std::string_view str_opcode(op_t op) {
   switch (op) {
+    // mov
     case MOV_IMM_REG:    // fallthru
     case MOV_IMM_MEM:    // fallthru
     case MOV_MEM_TO_ACC: // fallthru
     case MOV_ACC_TO_MEM: // fallthru
     case MOV_RM:
       return MOV_STR;
-    default: { throw std::invalid_argument("Invalid opcode"); }
+
+    // push
+    case PUSH_RM: // fallthru
+    case PUSH_REG:
+      return PUSH_STR;
+
+    default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
 }
 
@@ -420,10 +470,16 @@ static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
   return result;
 }
 
+static inline std::string str_byte_or_word(u16 data) {
+  return (data <= 0xff)
+    ? "byte "
+    : "word ";
+}
+
 /**
- * Print the ASM 8086 string representation of a parsed instruction to stdout.
+ * Print the ASM 8086 string representation of a parsed mov instruction to stdout.
  */
-static void print_instr(const Instruction &instr) {
+static void print_mov(const Instruction &instr) {
   std::cout
     << str_opcode(instr.opcode)
     << " ";
@@ -431,7 +487,7 @@ static void print_instr(const Instruction &instr) {
   std::string
     src = str_reg_mem_field_encoding(instr),
     dst = (instr.opcode == MOV_IMM_MEM)
-      ? ((instr.data <= 0xff) ? "byte " : "word ") + std::to_string(instr.data)
+      ? str_byte_or_word(instr.data) + std::to_string(instr.data)
       : std::string(str_register(instr.reg, instr.wbit));
 
   // If D bit is not set, then reg field is the src.
@@ -442,6 +498,49 @@ static void print_instr(const Instruction &instr) {
     << ", "
     << src
     << std::endl;
+}
+
+static void print_push(const Instruction &instr) {
+  std::cout
+    << str_opcode(instr.opcode)
+    << " ";
+
+  switch (instr.opcode) {
+    case PUSH_REG:
+      std::cout
+        // Half register push is not supported by the ASM 8086 standard.
+        << str_register(instr.reg, true)
+        << std::endl;
+      break;
+
+    case PUSH_RM:
+      std::cout
+        // Byte sized push is not supported by tha ASM 8086 standard.
+        << "word "
+        << str_reg_mem_field_encoding(instr)
+        << std::endl;
+      break;
+
+    default: throw std::invalid_argument("[print_push] Opcode not supported");
+  }
+}
+
+static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGISTERY {
+  // mov
+  { MOV_IMM_REG,    &print_mov },
+  { MOV_IMM_MEM,    &print_mov },
+  { MOV_RM,         &print_mov },
+  { MOV_ACC_TO_MEM, &print_mov },
+  { MOV_MEM_TO_ACC, &print_mov },
+
+  // push
+  { PUSH_REG, &print_push },
+  { PUSH_RM,  &print_push },
+};
+
+static void print_instr(const Instruction &instr) {
+  if (!PRINT_INSTRUCTION_REGISTERY.contains(instr.opcode)) throw std::invalid_argument("No print function registered for opcode");
+  PRINT_INSTRUCTION_REGISTERY.at(instr.opcode)(instr);
 }
 
 /**************************************************
