@@ -350,9 +350,9 @@ static inline Instruction parse_in_fix(std::istreambuf_iterator<char> &byte_stre
 static inline Instruction parse_in_var(std::istreambuf_iterator<char> &byte_stream) {
   return {
     .opcode = IN_VAR,
-    .mod = MOD_REG_NO_DISP,
-    .reg = AX,
-    .wbit = asm8086_wbit(*byte_stream),
+    .mod    = MOD_REG_NO_DISP,
+    .reg    = AX,
+    .wbit   = asm8086_wbit(*byte_stream),
   };
 }
 
@@ -369,9 +369,9 @@ static inline Instruction parse_out_fix(std::istreambuf_iterator<char> &byte_str
 static inline Instruction parse_out_var(std::istreambuf_iterator<char> &byte_stream) {
   return {
     .opcode = OUT_VAR,
-    .mod = MOD_REG_NO_DISP,
-    .reg = AX,
-    .wbit = asm8086_wbit(*byte_stream),
+    .mod    = MOD_REG_NO_DISP,
+    .reg    = AX,
+    .wbit   = asm8086_wbit(*byte_stream),
   };
 }
 
@@ -733,10 +733,10 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { XCHG_REG_ACC,   &print_xchg },
 
   // in/out
-  { IN_FIX,  &print_in_out },
-  { IN_VAR,  &print_in_out },
-  { OUT_FIX, &print_in_out },
-  { OUT_VAR, &print_in_out },
+  { IN_FIX,       &print_in_out },
+  { IN_VAR,       &print_in_out },
+  { OUT_FIX,      &print_in_out },
+  { OUT_VAR,      &print_in_out },
 };
 
 static void print_instr(const Instruction &instr) {
