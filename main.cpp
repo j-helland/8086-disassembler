@@ -61,6 +61,12 @@ enum op_t : u8 {
   POP_RM         = 0x8f,  // 1000 1111
   POP_REG        = 0x58,  // 0101 1000
 
+  /**
+   * xchg
+   */
+  XCHG_RM        = 0x86, // 1000 0110
+  XCHG_REG_ACC   = 0x90, // 1001 0000
+
   OP_INVALID,
 };
 
@@ -265,8 +271,8 @@ static inline Instruction parse_push_rm(std::istreambuf_iterator<char> &byte_str
 
   Instruction instr {
     .opcode = PUSH_RM,
-    .mod = (mod_t) asm8086_mode(second_byte),
-    .rm = asm8086_rm(second_byte),
+    .mod    = (mod_t) asm8086_mode(second_byte),
+    .rm     = asm8086_rm(second_byte),
   };
 
   if (is_direct_addressing_mode(instr.mod, instr.rm)) {
@@ -290,8 +296,8 @@ static inline Instruction parse_pop_rm(std::istreambuf_iterator<char> &byte_stre
 
   Instruction instr {
     .opcode = POP_RM,
-    .mod = (mod_t) asm8086_mode(second_byte),
-    .rm = asm8086_rm(second_byte),
+    .mod    = (mod_t) asm8086_mode(second_byte),
+    .rm     = asm8086_rm(second_byte),
   };
 
   if (is_direct_addressing_mode(instr.mod, instr.rm)) {
@@ -301,6 +307,36 @@ static inline Instruction parse_pop_rm(std::istreambuf_iterator<char> &byte_stre
   }
 
   return instr;
+}
+
+static inline Instruction parse_xchg_rm(std::istreambuf_iterator<char> &byte_stream) {
+  const u8 first_byte  = *byte_stream,
+           second_byte = *(++byte_stream);
+
+  Instruction instr {
+    .opcode = XCHG_RM,
+    .mod    = (mod_t) asm8086_mode(second_byte),
+    .reg    = asm8086_reg(second_byte, 3),
+    .rm     = asm8086_rm(second_byte),
+    .wbit   = asm8086_wbit(first_byte),
+  };
+
+  if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+    instr.addr = parse_data(++byte_stream, true);
+  } else {
+    instr.disp = parse_displacement(byte_stream, instr.mod);
+  }
+
+  return instr;
+}
+
+static inline Instruction parse_xchg_reg_acc(std::istreambuf_iterator<char> &byte_stream) {
+  return {
+    .opcode = XCHG_REG_ACC,
+    .mod    = MOD_REG_NO_DISP,
+    .reg    = asm8086_reg(*byte_stream),
+    .wbit   = true,
+  };
 }
 
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
@@ -318,6 +354,10 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   // pop
   { POP_REG,        &parse_pop_reg },
   { POP_RM,         &parse_pop_rm },
+
+  // xchg
+  { XCHG_RM,        &parse_xchg_rm },
+  { XCHG_REG_ACC,   &parse_xchg_reg_acc },
 };
 
 /**
@@ -357,6 +397,7 @@ static constexpr std::string_view
   MOV_STR  = "mov",
   PUSH_STR = "push",
   POP_STR  = "pop",
+  XCHG_STR = "xchg",
 
   // half word-length registers
   AL_STR = "al",
@@ -400,6 +441,11 @@ static std::string_view str_opcode(op_t op) {
     case POP_RM: // fallthru
     case POP_REG:
       return POP_STR;
+
+    // pop
+    case XCHG_RM: // fallthru
+    case XCHG_REG_ACC:
+      return XCHG_STR;
 
     default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
@@ -572,21 +618,45 @@ static void print_push_pop(const Instruction &instr) {
   }
 }
 
+static void print_xchg(const Instruction &instr) {
+  std::cout
+    << str_opcode(instr.opcode)
+    << " ";
+
+  std::string
+    src = str_reg_mem_field_encoding(instr),
+    dst = std::string(str_register(instr.reg, instr.wbit));
+
+  std::cout
+    << dst
+    << ", "
+    // We only want to output an explicit size if this is a memory xchg.
+    << ((instr.mod == MOD_REG_NO_DISP)
+        ? ""
+        : (instr.wbit ? "word " : "byte "))
+    << src
+    << std::endl;
+}
+
 static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGISTERY {
   // mov
-  { MOV_IMM_REG,    &print_mov },
-  { MOV_IMM_MEM,    &print_mov },
-  { MOV_RM,         &print_mov },
-  { MOV_ACC_TO_MEM, &print_mov },
-  { MOV_MEM_TO_ACC, &print_mov },
+  { MOV_IMM_REG,     &print_mov },
+  { MOV_IMM_MEM,     &print_mov },
+  { MOV_RM,          &print_mov },
+  { MOV_ACC_TO_MEM,  &print_mov },
+  { MOV_MEM_TO_ACC,  &print_mov },
 
   // push
-  { PUSH_REG, &print_push_pop },
-  { PUSH_RM,  &print_push_pop },
+  { PUSH_REG,   &print_push_pop },
+  { PUSH_RM,    &print_push_pop },
 
   // pop
-  { POP_REG,  &print_push_pop },
-  { POP_RM,   &print_push_pop },
+  { POP_REG,    &print_push_pop },
+  { POP_RM,     &print_push_pop },
+
+  // xchg
+  { XCHG_RM,        &print_xchg },
+  { XCHG_REG_ACC,   &print_xchg },
 };
 
 static void print_instr(const Instruction &instr) {
