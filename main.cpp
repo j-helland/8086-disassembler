@@ -23,6 +23,7 @@ static constexpr u8 ASM8086_RM_MASK     = 0x07;
 static inline bool asm8086_wbit(u8 byte, u8 offset) { return !!(((ASM8086_W_BIT << offset) & byte) >> offset); }
 static inline bool asm8086_wbit(u8 byte)            { return asm8086_wbit(byte, 0); }
 static inline bool asm8086_dbit(u8 byte)            { return !!(ASM8086_D_BIT & byte); }
+static inline bool asm8086_sbit(u8 byte)            { return !!(ASM8086_D_BIT & byte); }
 static inline u8 asm8086_mode(u8 byte)              { return (ASM8086_MODE_MASK & byte) >> ASM8086_MODE_OFFSET; }
 static inline u8 asm8086_reg(u8 byte, u8 offset)    { return ((ASM8086_REG_MASK << offset) & byte) >> offset; }
 static inline u8 asm8086_reg(u8 byte)               { return asm8086_reg(byte, 0); }
@@ -81,7 +82,7 @@ enum op_t : u8 {
 
   /** cmp */
   CMP_RM         = 0x38,                        // 0011 1000
-  CMP_IMM_RM     = REQUIRES_SECOND_BYTE | 0x87, // 1000 0111
+  CMP_IMM_RM     = REQUIRES_SECOND_BYTE | 0x7, // 1000 0111
   CMP_IMM_ACC    = 0x3c,                        // 0011 1100
 
   OP_INVALID,
@@ -176,8 +177,8 @@ public:
 
   inline T operator*() const { return _current; }
 
-  inline T peek() const { return *_stream; }
-  [[nodiscard]] inline bool is_end() const { return (_end_count >= 2); }
+  inline T peek() const { return (_end_count > 0) ? _current : *_stream; }
+  [[nodiscard]] inline bool is_end() const { return (_end_count > 1); }
 
 private:
   static constexpr std::istreambuf_iterator<T> _end {};
@@ -233,7 +234,7 @@ static Instruction parse_mov_imm_reg(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream;
   const bool wbit = asm8086_wbit(first_byte, 3);
 
-  return {
+  const Instruction instr {
     .opcode = MOV_IMM_REG,
     .mod    = MOD_REG_NO_DISP,
     .reg    = asm8086_reg(first_byte),
@@ -241,6 +242,9 @@ static Instruction parse_mov_imm_reg(PeekingIterator<char> &byte_stream, u8 _) {
     .dbit   = true,
     .data   = parse_data(++byte_stream, wbit),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
 static Instruction parse_mov_rm(PeekingIterator<char> &byte_stream, u8 _) {
@@ -263,16 +267,17 @@ static Instruction parse_mov_rm(PeekingIterator<char> &byte_stream, u8 _) {
     instr.disp = parse_displacement(byte_stream, instr.mod);
   }
 
+  ++byte_stream;
   return instr;
 }
 
-static inline Instruction parse_mov_imm_mem(PeekingIterator<char> &byte_stream, u8 _) {
+static Instruction parse_mov_imm_mem(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream,
            second_byte = *(++byte_stream);
   const auto mod = (mod_t) asm8086_mode(second_byte);
   const bool wbit = asm8086_wbit(first_byte);
 
-  return {
+  const Instruction instr {
     .opcode = MOV_IMM_MEM,
     .mod    = mod,
     .rm     = asm8086_rm(second_byte),
@@ -281,38 +286,50 @@ static inline Instruction parse_mov_imm_mem(PeekingIterator<char> &byte_stream, 
     .disp   = parse_displacement(byte_stream, mod),
     .data   = parse_data(++byte_stream, wbit),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_mov_acc_to_mem(PeekingIterator<char> &byte_stream, u8 _) {
+static Instruction parse_mov_acc_to_mem(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream;
 
-  return {
+  const Instruction instr {
     .opcode = MOV_ACC_TO_MEM,
     .wbit   = asm8086_wbit(first_byte),
     .dbit   = false,
     .addr   = parse_data(++byte_stream, true),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_mov_mem_to_acc(PeekingIterator<char> &byte_stream, u8 _) {
+static Instruction parse_mov_mem_to_acc(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream;
 
-  return {
+  const Instruction instr {
     .opcode = MOV_MEM_TO_ACC,
     .wbit   = asm8086_wbit(first_byte),
     .dbit   = true,
     .addr   = parse_data(++byte_stream, true),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_push_reg(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_push_reg(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = PUSH_REG,
     .reg    = asm8086_reg(*byte_stream),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_push_rm(PeekingIterator<char> &byte_stream, u8 _) {
+static Instruction parse_push_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 second_byte = *(++byte_stream);
 
   Instruction instr {
@@ -327,17 +344,21 @@ static inline Instruction parse_push_rm(PeekingIterator<char> &byte_stream, u8 _
     instr.disp = parse_displacement(byte_stream, instr.mod);
   }
 
+  ++byte_stream;
   return instr;
 }
 
-static inline Instruction parse_pop_reg(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_pop_reg(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = POP_REG,
     .reg    = asm8086_reg(*byte_stream),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_pop_rm(PeekingIterator<char> &byte_stream, u8 _) {
+static Instruction parse_pop_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 second_byte = *(++byte_stream);
 
   Instruction instr {
@@ -352,10 +373,11 @@ static inline Instruction parse_pop_rm(PeekingIterator<char> &byte_stream, u8 _)
     instr.disp = parse_displacement(byte_stream, instr.mod);
   }
 
+  ++byte_stream;
   return instr;
 }
 
-static inline Instruction parse_xchg_rm(PeekingIterator<char> &byte_stream, u8 _) {
+static Instruction parse_xchg_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte  = *byte_stream,
            second_byte = *(++byte_stream);
 
@@ -373,66 +395,147 @@ static inline Instruction parse_xchg_rm(PeekingIterator<char> &byte_stream, u8 _
     instr.disp = parse_displacement(byte_stream, instr.mod);
   }
 
+  ++byte_stream;
   return instr;
 }
 
-static inline Instruction parse_xchg_reg_acc(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_xchg_reg_acc(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = XCHG_REG_ACC,
     .mod    = MOD_REG_NO_DISP,
     .reg    = asm8086_reg(*byte_stream),
     .wbit   = true,
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_in_fix(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_in_fix(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = IN_FIX,
     .mod    = MOD_REG_NO_DISP,
     .reg    = AX,
     .wbit   = asm8086_wbit(*byte_stream),
     .data   = parse_data(++byte_stream, false),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_in_var(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_in_var(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = IN_VAR,
     .mod    = MOD_REG_NO_DISP,
     .reg    = AX,
     .wbit   = asm8086_wbit(*byte_stream),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_out_fix(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_out_fix(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = OUT_FIX,
     .mod    = MOD_REG_NO_DISP,
     .reg    = AX,
     .wbit   = asm8086_wbit(*byte_stream),
     .data   = parse_data(++byte_stream, false),
   };
+
+  ++byte_stream;
+  return instr;
 }
 
-static inline Instruction parse_out_var(PeekingIterator<char> &byte_stream, u8 _) {
-  return {
+static Instruction parse_out_var(PeekingIterator<char> &byte_stream, u8 _) {
+  const Instruction instr {
     .opcode = OUT_VAR,
     .mod    = MOD_REG_NO_DISP,
     .reg    = AX,
     .wbit   = asm8086_wbit(*byte_stream),
   };
+
+  ++byte_stream;
+  return instr;
+}
+
+static Instruction parse_add_rm(PeekingIterator<char> &byte_stream, u8 _) {
+  const u8 first_byte = *byte_stream,
+           second_byte = *(++byte_stream);
+
+  Instruction instr {
+    .opcode = ADD_RM,
+    .mod = (mod_t) asm8086_mode(second_byte),
+    .reg = asm8086_reg(second_byte, 3),
+    .rm = asm8086_rm(second_byte),
+    .wbit = asm8086_wbit(first_byte),
+    .dbit = asm8086_dbit(first_byte),
+  };
+
+  if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+    instr.addr = parse_data(++byte_stream, true);
+  } else {
+    instr.disp = parse_displacement(byte_stream, instr.mod);
+  }
+
+  ++byte_stream;
+  return instr;
+}
+
+static Instruction parse_add_imm_rm(PeekingIterator<char> &byte_stream, u8 _) {
+  const u8 first_byte = *byte_stream,
+           second_byte = *(++byte_stream);
+  const bool sign_extend = asm8086_sbit(first_byte);
+
+  Instruction instr {
+    .opcode = ADD_IMM_RM,
+    .mod = (mod_t) asm8086_mode(second_byte),
+    .rm = asm8086_rm(second_byte),
+    .wbit = asm8086_wbit(first_byte),
+    .dbit = true,
+  };
+
+  instr.disp = parse_displacement(byte_stream, instr.mod);
+  instr.data = parse_data(++byte_stream, (!sign_extend && instr.wbit));
+
+  ++byte_stream;
+  return instr;
+}
+
+static Instruction parse_add_imm_acc(PeekingIterator<char> &byte_stream, u8 _) {
+  const bool wbit = asm8086_wbit(*byte_stream);
+
+  const Instruction instr {
+    .opcode = ADD_IMM_ACC,
+    .mod    = MOD_REG_NO_DISP,
+    .rm     = AX,
+    .wbit   = wbit,
+    .dbit   = true,
+    .data   = parse_data(++byte_stream, wbit),
+  };
+
+  ++byte_stream;
+  return instr;
 }
 
 // Forward decl
 static Instruction parse_instruction(PeekingIterator<char> &byte_stream, u8 opcode_byte);
 
 static Instruction parse_requires_second_byte(PeekingIterator<char> &byte_stream, u8 opcode_byte) {
-  const u8 second_byte = byte_stream.peek();
-  return parse_instruction(byte_stream, opcode_byte | asm8086_op_secondary(second_byte));
+  opcode_byte |= asm8086_op_secondary(byte_stream.peek());
+
+  // Handle special case: ADD_IMM_RM code is the same as REQUIRES_SECOND_BYTE code.
+  if (opcode_byte == ADD_IMM_RM) {
+    return parse_add_imm_rm(byte_stream, opcode_byte);
+  }
+
+  return parse_instruction(byte_stream, opcode_byte);
 }
 
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
-  // opcode requires second byte to parse
+  // opcode requires second byte to parse. This will trigger a recursive call.
   { REQUIRES_SECOND_BYTE, &parse_requires_second_byte },
 
   // mov
@@ -459,6 +562,12 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { IN_VAR,         &parse_in_var },
   { OUT_FIX,        &parse_out_fix },
   { OUT_VAR,        &parse_out_var },
+
+  // add
+  { ADD_RM,         &parse_add_rm },
+  // These will trigger recursive parsing call.
+  { ADD_IMM_RM,     &parse_add_imm_rm },
+  { ADD_IMM_ACC,    &parse_add_imm_acc },
 };
 
 /**
@@ -476,8 +585,8 @@ static Instruction parse_instruction(PeekingIterator<char> &byte_stream, u8 opco
 
     // Parse.
     const Instruction instr = PARSER_REGISTRY.at(op)(byte_stream, next_opcode_byte);
-    // Move the byte _stream to the next byte or EOF.
-    ++byte_stream;
+    // Move the byte_stream to the next byte or EOF.
+//    ++byte_stream;
     return instr;
   }
 
@@ -502,6 +611,7 @@ static constexpr std::string_view
   XCHG_STR = "xchg",
   IN_STR   = "in",
   OUT_STR  = "out",
+  ADD_STR  = "add",
 
   // half word-length registers
   AL_STR = "al",
@@ -561,6 +671,12 @@ static std::string_view str_opcode(op_t op) {
     case OUT_VAR:
       return OUT_STR;
 
+    // add
+    case ADD_RM:     // fallthru
+    case ADD_IMM_RM: // fallthru
+    case ADD_IMM_ACC:
+      return ADD_STR;
+
     default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
 }
@@ -611,6 +727,52 @@ static inline std::string_view str_register(u8 reg, bool wide) {
     : str_half_register((HalfRegister)reg);
 }
 
+static inline std::string str_calculated_reg(const Instruction &instr) {
+  std::string result = "[";
+
+  switch (instr.rm) {
+    case 0:
+      result += "bx + si";
+      break;
+    case 1:
+      result += "bx + di";
+      break;
+    case 2:
+      result += "bp + si";
+      break;
+    case 3:
+      result += "bp + di";
+      break;
+    case 4:
+      result += "si";
+      break;
+    case 5:
+      result += "di";
+      break;
+    case 6:
+      // We already handled the direct addressing mode special case above.
+      result += "bp";
+      break;
+    case 7:
+      result += "bx";
+      break;
+
+    default:
+      throw std::invalid_argument("Invalid instruction r/m field");
+  }
+
+  // Add the displacement to the reg field. We must account for the fact that the displacement field is signed when
+  // we choose an arithmetic operator.
+  if (instr.disp != 0) {
+    if (instr.disp < 0) result += " - ";
+    else result += " + ";
+    result += std::to_string(abs(instr.disp));
+  }
+  result += "]";
+
+  return result;
+}
+
 /**
  * Handle mapping in Table 4-10 in the 8086 reference manual. Format calculated address and displacement.
  */
@@ -630,46 +792,7 @@ static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
 
   } else {
     // Other cases involve a calculated register with potential displacement.
-    result = "[";
-    switch (instr.rm) {
-      case 0:
-        result += "bx + si";
-        break;
-      case 1:
-        result += "bx + di";
-        break;
-      case 2:
-        result += "bp + si";
-        break;
-      case 3:
-        result += "bp + di";
-        break;
-      case 4:
-        result += "si";
-        break;
-      case 5:
-        result += "di";
-        break;
-      case 6:
-        // We already handled the direct addressing mode special case above.
-        result += "bp";
-        break;
-      case 7:
-        result += "bx";
-        break;
-
-      default:
-        throw std::invalid_argument("Invalid instruction r/m field");
-    }
-
-    // Add the displacement to the reg field. We must account for the fact that the displacement field is signed when
-    // we choose an arithmetic operator.
-    if (instr.disp != 0) {
-      if (instr.disp < 0) result += " - ";
-      else result += " + ";
-      result += std::to_string(abs(instr.disp));
-    }
-    result += "]";
+    result = str_calculated_reg(instr);
   }
 
   return result;
@@ -772,6 +895,34 @@ static void print_in_out(const Instruction &instr) {
     << std::endl;
 }
 
+static void print_add(const Instruction &instr) {
+  std::cout
+    << str_opcode(instr.opcode)
+    << " ";
+
+  std::string src, dst;
+
+  if (instr.opcode == ADD_IMM_RM || instr.opcode == ADD_IMM_ACC) {
+    src = (instr.mod == MOD_REG_NO_DISP)
+      ? str_register(instr.rm, instr.wbit)
+      // Calculated address is required.
+      : ((instr.mod == MOD_MEM_WORD_DISP) ? "word " : "byte ") + str_calculated_reg(instr);
+    dst = std::to_string(instr.data);
+
+  } else {
+    src = str_register(instr.reg, instr.wbit);
+    dst = str_reg_mem_field_encoding(instr);
+  }
+
+  if (instr.dbit) std::swap(src, dst);
+
+  std::cout
+    << dst
+    << ", "
+    << src
+    << std::endl;
+}
+
 static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGISTERY {
   // mov
   { MOV_IMM_REG,     &print_mov },
@@ -797,6 +948,11 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { IN_VAR,       &print_in_out },
   { OUT_FIX,      &print_in_out },
   { OUT_VAR,      &print_in_out },
+
+  // add
+  { ADD_RM, &print_add },
+  { ADD_IMM_RM, &print_add },
+  { ADD_IMM_ACC, &print_add },
 };
 
 static void print_instr(const Instruction &instr) {
