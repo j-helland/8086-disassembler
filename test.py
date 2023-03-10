@@ -43,6 +43,7 @@ if __name__ == "__main__":
             result = result_file.readlines()
             expected = expected_file.readlines()
             if result != expected:
+                print(f"FAILED {file_path}")
                 print(f"Mismatched binaries.\n{'Result':<12}{repr(result)}\n{'Expected':<12}{repr(expected)}")
                 raise ValueError
             print(f"OK {file_path}")

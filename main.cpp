@@ -27,6 +27,7 @@ static inline u8 asm8086_mode(u8 byte)              { return (ASM8086_MODE_MASK 
 static inline u8 asm8086_reg(u8 byte, u8 offset)    { return ((ASM8086_REG_MASK << offset) & byte) >> offset; }
 static inline u8 asm8086_reg(u8 byte)               { return asm8086_reg(byte, 0); }
 static inline u8 asm8086_rm(u8 byte)                { return ASM8086_RM_MASK & byte; }
+static inline u8 asm8086_op_secondary(u8 byte)      { return asm8086_reg(byte, 3); }
 
 /**************************************************
  * ASM 8086 parser data types.
@@ -64,6 +65,24 @@ enum op_t : u8 {
   IN_VAR         = 0xec, // 1110 1100
   OUT_FIX        = 0xe6, // 1110 0110
   OUT_VAR        = 0xee, // 1110 1110
+
+  // This should only be used for comparisons, not as an actual opcode.
+  REQUIRES_SECOND_BYTE = 0x80, // 1000 0000
+
+  /** add */
+  ADD_RM         = 0x00,                       // 0000 0000
+  ADD_IMM_RM     = REQUIRES_SECOND_BYTE | 0x0, // 1000 0000
+  ADD_IMM_ACC    = 0x04,                       // 0000 0100
+
+  /** sub */
+  SUB_RM         = 0x28,                       // 0010 1000
+  SUB_IMM_RM     = REQUIRES_SECOND_BYTE | 0x5, // 1000 0101
+  SUB_IMM_ACC    = 0x1c,                       // 0001 1100
+
+  /** cmp */
+  CMP_RM         = 0x38,                        // 0011 1000
+  CMP_IMM_RM     = REQUIRES_SECOND_BYTE | 0x87, // 1000 0111
+  CMP_IMM_ACC    = 0x3c,                        // 0011 1100
 
   OP_INVALID,
 };
@@ -138,16 +157,45 @@ struct Instruction {
 /**************************************************
  * Core instruction parsing logic.
  **************************************************/
+template<typename T>
+class PeekingIterator {
+public:
+  explicit PeekingIterator(std::istreambuf_iterator<T> &&stream) :
+    _stream(stream),
+    _current(*(_stream++)),
+    _end_count(0) {}
+
+  PeekingIterator &operator++() {
+    if (is_end()) return *this;
+
+    _current = (_end_count > 0) ? _current : *(_stream++);
+    _end_count += (_stream == _end);
+
+    return *this;
+  }
+
+  inline T operator*() const { return _current; }
+
+  inline T peek() const { return *_stream; }
+  [[nodiscard]] inline bool is_end() const { return (_end_count >= 2); }
+
+private:
+  static constexpr std::istreambuf_iterator<T> _end {};
+  size_t _end_count;
+  std::istreambuf_iterator<T> _stream;
+  T _current;
+};
+
 /**
  * All instruction parsing functions will adhere to this type.
  */
-typedef Instruction (*InstrParseFunc)(std::istreambuf_iterator<char> &byte_stream);
+typedef Instruction (*InstrParseFunc)(PeekingIterator<char> &byte_stream, u8 opcode_byte);
 
 /**
- * Parse either a byte or word-length chunk of the byte stream. It is assumed according to the ASM 8086 spec that the
+ * Parse either a byte or word-length chunk of the byte _stream. It is assumed according to the ASM 8086 spec that the
  * second byte contains the high bits of the data.
  */
-static inline u16 parse_data(std::istreambuf_iterator<char> &byte_stream, bool word) {
+static inline u16 parse_data(PeekingIterator<char> &byte_stream, bool word) {
   u16
     lo = (u8)*byte_stream,
     hi = (word)
@@ -157,13 +205,13 @@ static inline u16 parse_data(std::istreambuf_iterator<char> &byte_stream, bool w
 }
 
 /**
- * Parse the displacement data from the byte stream. The instruction mode dictates whether the data is byte or
+ * Parse the displacement data from the byte _stream. The instruction mode dictates whether the data is byte or
  * word-length.
  *
  * @param mod Instruction mode.
  * @return Signed displacement value.
  */
-static i16 parse_displacement(std::istreambuf_iterator<char> &byte_stream, mod_t mod) {
+static i16 parse_displacement(PeekingIterator<char> &byte_stream, mod_t mod) {
   switch (mod) {
     case MOD_MEM_BYTE_DISP: // fallthru
     case MOD_MEM_WORD_DISP: {
@@ -181,7 +229,7 @@ static bool is_direct_addressing_mode(mod_t mod, u8 rm) {
   return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
-static Instruction parse_mov_imm_reg(std::istreambuf_iterator<char> &byte_stream) {
+static Instruction parse_mov_imm_reg(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream;
   const bool wbit = asm8086_wbit(first_byte, 3);
 
@@ -195,7 +243,7 @@ static Instruction parse_mov_imm_reg(std::istreambuf_iterator<char> &byte_stream
   };
 }
 
-static Instruction parse_mov_rm(std::istreambuf_iterator<char> &byte_stream) {
+static Instruction parse_mov_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream,
            second_byte = *(++byte_stream);
 
@@ -218,7 +266,7 @@ static Instruction parse_mov_rm(std::istreambuf_iterator<char> &byte_stream) {
   return instr;
 }
 
-static inline Instruction parse_mov_imm_mem(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_mov_imm_mem(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream,
            second_byte = *(++byte_stream);
   const auto mod = (mod_t) asm8086_mode(second_byte);
@@ -235,7 +283,7 @@ static inline Instruction parse_mov_imm_mem(std::istreambuf_iterator<char> &byte
   };
 }
 
-static inline Instruction parse_mov_acc_to_mem(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_mov_acc_to_mem(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream;
 
   return {
@@ -246,7 +294,7 @@ static inline Instruction parse_mov_acc_to_mem(std::istreambuf_iterator<char> &b
   };
 }
 
-static inline Instruction parse_mov_mem_to_acc(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_mov_mem_to_acc(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte = *byte_stream;
 
   return {
@@ -257,14 +305,14 @@ static inline Instruction parse_mov_mem_to_acc(std::istreambuf_iterator<char> &b
   };
 }
 
-static inline Instruction parse_push_reg(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_push_reg(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = PUSH_REG,
     .reg    = asm8086_reg(*byte_stream),
   };
 }
 
-static inline Instruction parse_push_rm(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_push_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 second_byte = *(++byte_stream);
 
   Instruction instr {
@@ -282,14 +330,14 @@ static inline Instruction parse_push_rm(std::istreambuf_iterator<char> &byte_str
   return instr;
 }
 
-static inline Instruction parse_pop_reg(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_pop_reg(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = POP_REG,
     .reg    = asm8086_reg(*byte_stream),
   };
 }
 
-static inline Instruction parse_pop_rm(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_pop_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 second_byte = *(++byte_stream);
 
   Instruction instr {
@@ -307,7 +355,7 @@ static inline Instruction parse_pop_rm(std::istreambuf_iterator<char> &byte_stre
   return instr;
 }
 
-static inline Instruction parse_xchg_rm(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_xchg_rm(PeekingIterator<char> &byte_stream, u8 _) {
   const u8 first_byte  = *byte_stream,
            second_byte = *(++byte_stream);
 
@@ -328,7 +376,7 @@ static inline Instruction parse_xchg_rm(std::istreambuf_iterator<char> &byte_str
   return instr;
 }
 
-static inline Instruction parse_xchg_reg_acc(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_xchg_reg_acc(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = XCHG_REG_ACC,
     .mod    = MOD_REG_NO_DISP,
@@ -337,7 +385,7 @@ static inline Instruction parse_xchg_reg_acc(std::istreambuf_iterator<char> &byt
   };
 }
 
-static inline Instruction parse_in_fix(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_in_fix(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = IN_FIX,
     .mod    = MOD_REG_NO_DISP,
@@ -347,7 +395,7 @@ static inline Instruction parse_in_fix(std::istreambuf_iterator<char> &byte_stre
   };
 }
 
-static inline Instruction parse_in_var(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_in_var(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = IN_VAR,
     .mod    = MOD_REG_NO_DISP,
@@ -356,7 +404,7 @@ static inline Instruction parse_in_var(std::istreambuf_iterator<char> &byte_stre
   };
 }
 
-static inline Instruction parse_out_fix(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_out_fix(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = OUT_FIX,
     .mod    = MOD_REG_NO_DISP,
@@ -366,7 +414,7 @@ static inline Instruction parse_out_fix(std::istreambuf_iterator<char> &byte_str
   };
 }
 
-static inline Instruction parse_out_var(std::istreambuf_iterator<char> &byte_stream) {
+static inline Instruction parse_out_var(PeekingIterator<char> &byte_stream, u8 _) {
   return {
     .opcode = OUT_VAR,
     .mod    = MOD_REG_NO_DISP,
@@ -375,7 +423,18 @@ static inline Instruction parse_out_var(std::istreambuf_iterator<char> &byte_str
   };
 }
 
+// Forward decl
+static Instruction parse_instruction(PeekingIterator<char> &byte_stream, u8 opcode_byte);
+
+static Instruction parse_requires_second_byte(PeekingIterator<char> &byte_stream, u8 opcode_byte) {
+  const u8 second_byte = byte_stream.peek();
+  return parse_instruction(byte_stream, opcode_byte | asm8086_op_secondary(second_byte));
+}
+
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
+  // opcode requires second byte to parse
+  { REQUIRES_SECOND_BYTE, &parse_requires_second_byte },
+
   // mov
   { MOV_IMM_REG,    &parse_mov_imm_reg },
   { MOV_IMM_MEM,    &parse_mov_imm_mem },
@@ -403,25 +462,26 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
 };
 
 /**
- * Parse a potentially multi-byte instruction sequence from the byte stream.
+ * Parse a potentially multi-byte instruction sequence from the byte _stream.
  */
-static Instruction parse_instruction(std::istreambuf_iterator<char> &byte_stream) {
-  const u8 first_byte = *byte_stream;
+static Instruction parse_instruction(PeekingIterator<char> &byte_stream, u8 opcode_byte) {
+//  const u8 first_byte = *byte_stream;
 
   // The opcode masks are handled in descending order to avoid truncating the byte prematurely. Otherwise, we could pick
   // the wrong opcode value.
   for (u8 mask : OPCODE_MASKS) {
-    const op_t op = static_cast<op_t>(mask & first_byte);
+    const u8 next_opcode_byte = mask & opcode_byte;
+    const op_t op = static_cast<op_t>(next_opcode_byte);
     if (!PARSER_REGISTRY.contains(op)) continue;
 
     // Parse.
-    const Instruction instr = PARSER_REGISTRY.at(op)(byte_stream);
-    // Move the byte stream to the next byte or EOF.
+    const Instruction instr = PARSER_REGISTRY.at(op)(byte_stream, next_opcode_byte);
+    // Move the byte _stream to the next byte or EOF.
     ++byte_stream;
     return instr;
   }
 
-  printf("%x\n", first_byte);
+  printf("%x\n", opcode_byte);
 
   throw std::invalid_argument("[parse_instruction] Invalid opcode byte");
 }
@@ -764,12 +824,11 @@ int main(int argc, char **argv) {
 
   // Read binary into buffer.
   std::ifstream input(opts.fpath, std::ios::binary);
-  std::istreambuf_iterator<char> byte_stream(input);
-  const std::istreambuf_iterator<char> end;
+  PeekingIterator<char> byte_stream(std::istreambuf_iterator<char>{input});
 
   // Disassemble the binary according to ASM 8086 grammar.
-  while (byte_stream != end) {
-    const Instruction instr = parse_instruction(byte_stream);
+  while (!byte_stream.is_end()) {
+    const Instruction instr = parse_instruction(byte_stream, *byte_stream);
 
     // TODO: should be able to specify an output file.
     print_instr(instr);
