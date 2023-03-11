@@ -85,6 +85,28 @@ enum op_t : u16 {
   CMP_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x7, // 1000 0111
   CMP_IMM_ACC    = 0x3c,                              // 0011 1100
 
+  /** conditional jump */
+  JE             = 0x74, // 0111 0100
+  JL             = 0x7c, // 0111 1100
+  JLE            = 0x7e, // 0111 1110
+  JB             = 0x72, // 0111 0010
+  JBE            = 0x76, // 0111 0110
+  JP             = 0x7a, // 0111 1010
+  JO             = 0x70, // 0111 0000
+  JS             = 0x78, // 0111 1000
+  JNE            = 0x75, // 0111 0101
+  JNL            = 0x7d, // 0111 1101
+  JNLE           = 0x7f, // 0111 1111
+  JNB            = 0x73, // 0111 0011
+  JNBE           = 0x77, // 0111 0111
+  JNP            = 0x7b, // 0111 1011
+  JNO            = 0x71, // 0111 0001
+  JNS            = 0x79, // 0111 1001
+  LOOP           = 0xe2, // 1110 0010
+  LOOPZ          = 0xe1, // 1110 0001
+  LOOPNZ         = 0xe0, // 1110 0000
+  JCXZ           = 0xe3, // 1110 0011
+
   OP_INVALID,
 };
 
@@ -528,6 +550,16 @@ static Instruction parse_add_sub_cmp_imm_acc(PeekingIterator<char> &byte_stream,
   return instr;
 }
 
+static Instruction parse_conditional_jump(PeekingIterator<char> &byte_stream, u16 opcode) {
+  const Instruction instr {
+    .opcode = (op_t) opcode,
+    .data   = parse_data(++byte_stream, false),
+  };
+
+  ++byte_stream;
+  return instr;
+}
+
 // Forward decl
 static Instruction parse_instruction(PeekingIterator<char> &, u16);
 
@@ -577,14 +609,36 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { ADD_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
   // sub
-  { SUB_RM,         &parse_add_sub_cmp_rm },
-  { SUB_IMM_RM,     &parse_add_sub_cmp_imm_rm },
-  { SUB_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+  {SUB_RM,      &parse_add_sub_cmp_rm },
+  {SUB_IMM_RM,  &parse_add_sub_cmp_imm_rm },
+  {SUB_IMM_ACC, &parse_add_sub_cmp_imm_acc },
 
   // cmp
-  { CMP_RM,         &parse_add_sub_cmp_rm },
-  { CMP_IMM_RM,     &parse_add_sub_cmp_imm_rm },
-  { CMP_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+  {CMP_RM,      &parse_add_sub_cmp_rm },
+  {CMP_IMM_RM,  &parse_add_sub_cmp_imm_rm },
+  {CMP_IMM_ACC, &parse_add_sub_cmp_imm_acc },
+
+  // conditional jump
+  {JE,          &parse_conditional_jump },
+  {JL,          &parse_conditional_jump },
+  {JLE,         &parse_conditional_jump },
+  {JB,          &parse_conditional_jump },
+  {JBE,         &parse_conditional_jump },
+  {JP,          &parse_conditional_jump },
+  {JO,          &parse_conditional_jump },
+  {JS,          &parse_conditional_jump },
+  {JNE,         &parse_conditional_jump },
+  {JNL,         &parse_conditional_jump },
+  {JNLE,        &parse_conditional_jump },
+  {JNB,         &parse_conditional_jump },
+  {JNBE,        &parse_conditional_jump },
+  {JNP,         &parse_conditional_jump },
+  {JNO,         &parse_conditional_jump },
+  {JNS,         &parse_conditional_jump },
+  {LOOP,        &parse_conditional_jump },
+  {LOOPZ,       &parse_conditional_jump },
+  {LOOPNZ,      &parse_conditional_jump },
+  {JCXZ,        &parse_conditional_jump },
 };
 
 /**
@@ -626,6 +680,27 @@ static constexpr std::string_view
   ADD_STR  = "add",
   SUB_STR  = "sub",
   CMP_STR  = "cmp",
+  // conditional jump
+  JE_STR     = "je",
+  JL_STR     = "jl",
+  JLE_STR    = "jle",
+  JB_STR     = "jb",
+  JBE_STR    = "jbe",
+  JP_STR     = "jp",
+  JO_STR     = "jo",
+  JS_STR     = "js",
+  JNE_STR    = "jne",
+  JNL_STR    = "jnl",
+  JNLE_STR   = "jnle",
+  JNB_STR    = "jnb",
+  JNBE_STR   = "jnbe",
+  JNP_STR    = "jnp",
+  JNO_STR    = "jno",
+  JNS_STR    = "jns",
+  LOOP_STR   = "loop",
+  LOOPZ_STR  = "loopz",
+  LOOPNZ_STR = "loopnz",
+  JCXZ_STR   = "jcxz",
 
   // half word-length registers
   AL_STR = "al",
@@ -702,6 +777,28 @@ static std::string_view str_opcode(op_t op) {
     case CMP_IMM_RM: // fallthru
     case CMP_IMM_ACC:
       return CMP_STR;
+
+    // conditional jump
+    case JE: return JE_STR;
+    case JL: return JL_STR;
+    case JLE: return JLE_STR;
+    case JB: return JB_STR;
+    case JBE: return JBE_STR;
+    case JP: return JP_STR;
+    case JO: return JO_STR;
+    case JS: return JS_STR;
+    case JNE: return JNE_STR;
+    case JNL: return JNL_STR;
+    case JNLE: return JNLE_STR;
+    case JNB: return JNB_STR;
+    case JNBE: return JNBE_STR;
+    case JNP: return JNP_STR;
+    case JNO: return JNO_STR;
+    case JNS: return JNS_STR;
+    case LOOP: return LOOP_STR;
+    case LOOPZ: return LOOPZ_STR;
+    case LOOPNZ: return LOOPNZ_STR;
+    case JCXZ: return JCXZ_STR;
 
     default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
@@ -959,6 +1056,14 @@ static void print_add_sub_cmp(const Instruction &instr) {
     << std::endl;
 }
 
+static void print_conditional_jump(const Instruction &instr) {
+  std::cout
+    << str_opcode(instr.opcode)
+    << " "
+    << std::to_string((i8)instr.data)
+    << std::endl;
+}
+
 static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGISTERY {
   // mov
   { MOV_IMM_REG,     &print_mov },
@@ -991,14 +1096,36 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { ADD_IMM_ACC,     &print_add_sub_cmp },
 
   // sub
-  { SUB_RM,          &print_add_sub_cmp },
-  { SUB_IMM_RM,      &print_add_sub_cmp },
-  { SUB_IMM_ACC,     &print_add_sub_cmp },
+  {SUB_RM,      &print_add_sub_cmp },
+  {SUB_IMM_RM,  &print_add_sub_cmp },
+  {SUB_IMM_ACC, &print_add_sub_cmp },
 
   // cmp
-  { CMP_RM,          &print_add_sub_cmp },
-  { CMP_IMM_RM,      &print_add_sub_cmp },
-  { CMP_IMM_ACC,     &print_add_sub_cmp },
+  {CMP_RM,      &print_add_sub_cmp },
+  {CMP_IMM_RM,  &print_add_sub_cmp },
+  {CMP_IMM_ACC, &print_add_sub_cmp },
+
+  // conditional jump
+  {JE,          &print_conditional_jump },
+  {JL,          &print_conditional_jump },
+  {JLE,         &print_conditional_jump },
+  {JB,          &print_conditional_jump },
+  {JBE,         &print_conditional_jump },
+  {JP,          &print_conditional_jump },
+  {JO,          &print_conditional_jump },
+  {JS,          &print_conditional_jump },
+  {JNE,         &print_conditional_jump },
+  {JNL,         &print_conditional_jump },
+  {JNLE,        &print_conditional_jump },
+  {JNB,         &print_conditional_jump },
+  {JNBE,        &print_conditional_jump },
+  {JNP,         &print_conditional_jump },
+  {JNO,         &print_conditional_jump },
+  {JNS,         &print_conditional_jump },
+  {LOOP,        &print_conditional_jump },
+  {LOOPZ,       &print_conditional_jump },
+  {LOOPNZ,      &print_conditional_jump },
+  {JCXZ,        &print_conditional_jump },
 };
 
 static void print_instr(const Instruction &instr) {
