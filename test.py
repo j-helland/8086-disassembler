@@ -45,5 +45,10 @@ if __name__ == "__main__":
             if result != expected:
                 print(f"FAILED {file_path}")
                 print(f"Mismatched binaries.\n{'Result':<12}{repr(result)}\n{'Expected':<12}{repr(expected)}")
+                disassembly_file.file.seek(0)
+                print()
+                for instr in disassembly_file.file.readlines():
+                    print(instr.decode("utf-8").strip())
+                print()
                 raise ValueError
             print(f"OK {file_path}")
