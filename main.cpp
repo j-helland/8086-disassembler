@@ -92,17 +92,27 @@ enum op_t : u16 {
 
   /** add */
   ADD_RM         = 0x00,                              // 0000 0000
-  ADD_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x0, // 1000 0000
+  ADD_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x0, // 1000 0000 0000
   ADD_IMM_ACC    = 0x04,                              // 0000 0100
+
+  /** add with carry */
+  ADC_RM         = 0x10,                              // 0001 0000
+  ADC_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x2, // 1000 0000 0010
+  ADC_IMM_ACC    = 0x14,                              // 0001 0100
 
   /** sub */
   SUB_RM         = 0x28,                              // 0010 1000
-  SUB_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x5, // 1000 0101
+  SUB_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x5, // 1000 0000 0101
   SUB_IMM_ACC    = 0x2c,                              // 0010 1100
+
+  /** sub with borrow */
+  SBB_RM         = 0x18,                              // 0001 1000
+  SBB_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x3, // 1000 0000 0011
+  SBB_IMM_ACC    = 0x1c,                              // 0001 1100
 
   /** cmp */
   CMP_RM         = 0x38,                              // 0011 1000
-  CMP_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x7, // 1000 0111
+  CMP_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x7, // 1000 0000 0111
   CMP_IMM_ACC    = 0x3c,                              // 0011 1100
 
   /** conditional jump */
@@ -858,40 +868,50 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
 
   // add
   { ADD_RM,         &parse_add_sub_cmp_rm },
-  { ADD_IMM_RM,     &parse_requires_second_byte },
+  { ADD_IMM_RM,     &parse_add_sub_cmp_imm_rm },
   { ADD_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
+  // add with carry
+  { ADC_RM,         &parse_add_sub_cmp_rm },
+  { ADC_IMM_RM,     &parse_add_sub_cmp_imm_rm },
+  { ADC_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+
   // sub
-  {SUB_RM,          &parse_add_sub_cmp_rm },
-  {SUB_IMM_RM,      &parse_add_sub_cmp_imm_rm },
-  {SUB_IMM_ACC,     &parse_add_sub_cmp_imm_acc },
+  { SUB_RM,         &parse_add_sub_cmp_rm },
+  { SUB_IMM_RM,     &parse_add_sub_cmp_imm_rm },
+  { SUB_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+
+  // sub with borrow
+  { SBB_RM,         &parse_add_sub_cmp_rm },
+  { SBB_IMM_RM,     &parse_add_sub_cmp_imm_rm },
+  { SBB_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
   // cmp
-  {CMP_RM,          &parse_add_sub_cmp_rm },
-  {CMP_IMM_RM,      &parse_add_sub_cmp_imm_rm },
-  {CMP_IMM_ACC,     &parse_add_sub_cmp_imm_acc },
+  { CMP_RM,         &parse_add_sub_cmp_rm },
+  { CMP_IMM_RM,     &parse_add_sub_cmp_imm_rm },
+  { CMP_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
   // conditional jump
-  {JE,              &parse_conditional_jump },
-  {JL,              &parse_conditional_jump },
-  {JLE,             &parse_conditional_jump },
-  {JB,              &parse_conditional_jump },
-  {JBE,             &parse_conditional_jump },
-  {JP,              &parse_conditional_jump },
-  {JO,              &parse_conditional_jump },
-  {JS,              &parse_conditional_jump },
-  {JNE,             &parse_conditional_jump },
-  {JNL,             &parse_conditional_jump },
-  {JNLE,            &parse_conditional_jump },
-  {JNB,             &parse_conditional_jump },
-  {JNBE,            &parse_conditional_jump },
-  {JNP,             &parse_conditional_jump },
-  {JNO,             &parse_conditional_jump },
-  {JNS,             &parse_conditional_jump },
-  {LOOP,            &parse_conditional_jump },
-  {LOOPZ,           &parse_conditional_jump },
-  {LOOPNZ,          &parse_conditional_jump },
-  {JCXZ,            &parse_conditional_jump },
+  { JE,              &parse_conditional_jump },
+  { JL,              &parse_conditional_jump },
+  { JLE,             &parse_conditional_jump },
+  { JB,              &parse_conditional_jump },
+  { JBE,             &parse_conditional_jump },
+  { JP,              &parse_conditional_jump },
+  { JO,              &parse_conditional_jump },
+  { JS,              &parse_conditional_jump },
+  { JNE,             &parse_conditional_jump },
+  { JNL,             &parse_conditional_jump },
+  { JNLE,            &parse_conditional_jump },
+  { JNB,             &parse_conditional_jump },
+  { JNBE,            &parse_conditional_jump },
+  { JNP,             &parse_conditional_jump },
+  { JNO,             &parse_conditional_jump },
+  { JNS,             &parse_conditional_jump },
+  { LOOP,            &parse_conditional_jump },
+  { LOOPZ,           &parse_conditional_jump },
+  { LOOPNZ,          &parse_conditional_jump },
+  { JCXZ,            &parse_conditional_jump },
 };
 
 /**
@@ -931,7 +951,9 @@ static constexpr std::string_view
   IN_STR   = "in",
   OUT_STR  = "out",
   ADD_STR  = "add",
+  ADC_STR  = "adc",
   SUB_STR  = "sub",
+  SBB_STR  = "sbb",
   CMP_STR  = "cmp",
 
   // output to
@@ -1037,6 +1059,7 @@ static std::string_view str_opcode(op_t op) {
     case OUT_VAR:
       return OUT_STR;
 
+    // output to
     case XLAT: return XLAT_STR;
     case LEA: return LEA_STR;
     case LDS: return LDS_STR;
@@ -1052,11 +1075,23 @@ static std::string_view str_opcode(op_t op) {
     case ADD_IMM_ACC:
       return ADD_STR;
 
+    // add with carry
+    case ADC_RM:     // fallthru
+    case ADC_IMM_RM: // fallthru
+    case ADC_IMM_ACC:
+      return ADC_STR;
+
     // sub
     case SUB_RM:     // fallthru
     case SUB_IMM_RM: // fallthru
     case SUB_IMM_ACC:
       return SUB_STR;
+
+    // sub with borrow
+    case SBB_RM:     // fallthru
+    case SBB_IMM_RM: // fallthru
+    case SBB_IMM_ACC:
+      return SBB_STR;
 
     // cmp
     case CMP_RM:     // fallthru
@@ -1355,8 +1390,12 @@ static void print_add_sub_cmp(const Instruction &instr) {
   switch (instr.opcode) {
     case ADD_IMM_RM:  // fallthru
     case ADD_IMM_ACC: // fallthru
+    case ADC_IMM_RM:  // fallthru
+    case ADC_IMM_ACC: // fallthru
     case SUB_IMM_RM:  // fallthru
     case SUB_IMM_ACC: // fallthru
+    case SBB_IMM_RM:  // fallthru
+    case SBB_IMM_ACC: // fallthru
     case CMP_IMM_RM:  // fallthru
     case CMP_IMM_ACC: {
       src = (instr.mod == MOD_REG_NO_DISP)
@@ -1441,10 +1480,20 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { ADD_IMM_RM,      &print_add_sub_cmp },
   { ADD_IMM_ACC,     &print_add_sub_cmp },
 
+  // add with carry
+  { ADC_RM,          &print_add_sub_cmp },
+  { ADC_IMM_RM,      &print_add_sub_cmp },
+  { ADC_IMM_ACC,     &print_add_sub_cmp },
+
   // sub
   {SUB_RM,           &print_add_sub_cmp },
   {SUB_IMM_RM,       &print_add_sub_cmp },
   {SUB_IMM_ACC,      &print_add_sub_cmp },
+
+  // sub with borrow
+  {SBB_RM,           &print_add_sub_cmp },
+  {SBB_IMM_RM,       &print_add_sub_cmp },
+  {SBB_IMM_ACC,      &print_add_sub_cmp },
 
   // cmp
   {CMP_RM,           &print_add_sub_cmp },
