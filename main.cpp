@@ -80,6 +80,16 @@ enum op_t : u16 {
   OUT_FIX        = 0xe6, // 1110 0110
   OUT_VAR        = 0xee, // 1110 1110
 
+  /** output to */
+  XLAT           = 0xd7, // 1101 0111
+  LEA            = 0x8d, // 1000 1101
+  LDS            = 0xc5, // 1100 0101
+  LES            = 0xc4, // 1100 0100
+  LAHF           = 0x9f, // 1001 1111
+  SAHF           = 0x9e, // 1001 1110
+  PUSHF          = 0x9c, // 1001 1100
+  POPF           = 0x9d, // 1001 1101
+
   /** add */
   ADD_RM         = 0x00,                              // 0000 0000
   ADD_IMM_RM     = (REQUIRES_SECOND_BYTE << 8) | 0x0, // 1000 0000
@@ -394,6 +404,11 @@ static bool is_direct_addressing_mode(mod_t mod, u8 rm) {
   return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
+static Instruction parse_no_args(PeekingIterator<char> &byte_stream, u16 opcode) {
+  ++byte_stream;
+  return { .opcode = (op_t) opcode, };
+}
+
 static Instruction parse_mov_imm_reg(PeekingIterator<char> &byte_stream, u16 _) {
   const u8 first_byte = *byte_stream;
   const bool wbit = asm8086_wbit(first_byte, 3);
@@ -679,6 +694,28 @@ static Instruction parse_out_var(PeekingIterator<char> &byte_stream, u16 _) {
   return instr;
 }
 
+static Instruction parse_load(PeekingIterator<char> &byte_stream, u16 opcode) {
+  const u8 first_byte = *byte_stream,
+           second_byte = *(++byte_stream);
+
+  Instruction instr {
+    .opcode = (op_t) opcode,
+    .mod = (mod_t) asm8086_mode(second_byte),
+    .reg = asm8086_reg(second_byte, 3),
+    .rm = asm8086_rm(second_byte),
+    .wbit = true,
+    .dbit = false,
+
+    // metadata
+    .bytes_read = 2,
+  };
+
+  parse_and_insert_displacement(instr, byte_stream);
+
+  ++byte_stream;
+  return instr;
+}
+
 static Instruction parse_add_sub_cmp_rm(PeekingIterator<char> &byte_stream, u16 opcode) {
   const u8 first_byte = *byte_stream,
            second_byte = *(++byte_stream);
@@ -809,6 +846,16 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { OUT_FIX,        &parse_out_fix },
   { OUT_VAR,        &parse_out_var },
 
+  // output to
+  { XLAT,           &parse_no_args },
+  { LEA,            &parse_load },
+  { LDS,            &parse_load },
+  { LES,            &parse_load },
+  { LAHF,           &parse_no_args },
+  { SAHF,           &parse_no_args },
+  { PUSHF,          &parse_no_args },
+  { POPF,           &parse_no_args },
+
   // add
   { ADD_RM,         &parse_add_sub_cmp_rm },
   { ADD_IMM_RM,     &parse_requires_second_byte },
@@ -886,6 +933,17 @@ static constexpr std::string_view
   ADD_STR  = "add",
   SUB_STR  = "sub",
   CMP_STR  = "cmp",
+
+  // output to
+  XLAT_STR  = "xlat",
+  LEA_STR   = "lea",
+  LDS_STR   = "lds",
+  LES_STR   = "les",
+  LAHF_STR  = "lahf",
+  SAHF_STR  = "sahf",
+  PUSHF_STR = "pushf",
+  POPF_STR  = "popf",
+
   // conditional jump
   JE_STR     = "je",
   JL_STR     = "jl",
@@ -978,6 +1036,15 @@ static std::string_view str_opcode(op_t op) {
     case OUT_FIX: // fallthru
     case OUT_VAR:
       return OUT_STR;
+
+    case XLAT: return XLAT_STR;
+    case LEA: return LEA_STR;
+    case LDS: return LDS_STR;
+    case LES: return LES_STR;
+    case LAHF: return LAHF_STR;
+    case SAHF: return SAHF_STR;
+    case PUSHF: return PUSHF_STR;
+    case POPF: return POPF_STR;
 
     // add
     case ADD_RM:     // fallthru
@@ -1153,6 +1220,10 @@ static inline std::string str_reg_mem_field_encoding(const Instruction &instr) {
   return result;
 }
 
+static void print_no_args(const Instruction &instr) {
+  std::cout << str_opcode(instr.opcode) << std::endl;
+}
+
 /**
  * Print the ASM 8086 string representation of a parsed mov instruction to stdout.
  */
@@ -1256,6 +1327,24 @@ static void print_in_out(const Instruction &instr) {
     << std::endl;
 }
 
+static void print_load(const Instruction &instr) {
+  std::cout
+    << str_opcode(instr.opcode)
+    << " ";
+
+  std::string
+    src = std::string(str_register(instr.reg, instr.wbit)),
+    dst = str_reg_mem_field_encoding(instr);
+
+  if (instr.dbit) std::swap(src, dst);
+
+  std::cout
+    << src
+    << ", "
+    << dst
+    << std::endl;
+}
+
 static void print_add_sub_cmp(const Instruction &instr) {
   std::cout
     << str_opcode(instr.opcode)
@@ -1336,6 +1425,16 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { IN_VAR,          &print_in_out },
   { OUT_FIX,         &print_in_out },
   { OUT_VAR,         &print_in_out },
+
+  // output to
+  { XLAT,            &print_no_args },
+  { LEA,             &print_load },
+  { LDS,             &print_load },
+  { LES,             &print_load },
+  { LAHF,            &print_no_args },
+  { SAHF,            &print_no_args },
+  { PUSHF,           &print_no_args },
+  { POPF,            &print_no_args },
 
   // add
   { ADD_RM,          &print_add_sub_cmp },
