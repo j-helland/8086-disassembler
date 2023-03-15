@@ -40,8 +40,8 @@ if __name__ == "__main__":
             # Assemble the disassembly file.
             subprocess.call(["nasm", disassembly_file.name, "-o", expected_file.name])
 
-            result = result_file.readlines()
-            expected = expected_file.readlines()
+            result = result_file.read()
+            expected = expected_file.read()
             if result != expected:
                 print(f"FAILED {file_path}")
                 print(f"Mismatched binaries.\n{'Result':<12}{repr(result)}\n{'Expected':<12}{repr(expected)}")

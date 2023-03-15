@@ -21,15 +21,17 @@ static constexpr u8 ASM8086_REG_MASK    = 0x07;
 static constexpr u8 ASM8086_RM_MASK     = 0x07;
 
 // Avoid macros in favor of inline so we can let the compiler "do the right thing".
-static inline bool asm8086_wbit(u8 byte, u8 offset) { return !!(((ASM8086_W_BIT << offset) & byte) >> offset); }
-static inline bool asm8086_wbit(u8 byte)            { return asm8086_wbit(byte, 0); }
-static inline bool asm8086_dbit(u8 byte)            { return !!(ASM8086_D_BIT & byte); }
-static inline bool asm8086_sbit(u8 byte)            { return !!(ASM8086_D_BIT & byte); }
-static inline u8 asm8086_mode(u8 byte)              { return (ASM8086_MODE_MASK & byte) >> ASM8086_MODE_OFFSET; }
-static inline u8 asm8086_reg(u8 byte, u8 offset)    { return ((ASM8086_REG_MASK << offset) & byte) >> offset; }
-static inline u8 asm8086_reg(u8 byte)               { return asm8086_reg(byte, 0); }
-static inline u8 asm8086_rm(u8 byte)                { return ASM8086_RM_MASK & byte; }
-static inline u8 asm8086_op_secondary(u8 byte)      { return asm8086_reg(byte, 3); }
+static inline bool asm8086_wbit(u8 byte, u8 offset)    { return !!(((ASM8086_W_BIT << offset) & byte) >> offset); }
+static inline bool asm8086_wbit(u8 byte)               { return asm8086_wbit(byte, 0); }
+static inline bool asm8086_dbit(u8 byte)               { return !!(ASM8086_D_BIT & byte); }
+static inline bool asm8086_sbit(u8 byte)               { return !!(ASM8086_D_BIT & byte); }
+static inline u8   asm8086_mode(u8 byte)               { return (ASM8086_MODE_MASK & byte) >> ASM8086_MODE_OFFSET; }
+static inline u8   asm8086_reg(u8 byte, u8 offset)     { return ((ASM8086_REG_MASK << offset) & byte) >> offset; }
+static inline u8   asm8086_reg(u8 byte)                { return asm8086_reg(byte, 0); }
+static inline u8   asm8086_reg_seg(u8 byte, u8 offset) { return 0x03 & asm8086_reg(byte, offset); }
+static inline u8   asm8086_reg_seg(u8 byte)            { return asm8086_reg_seg(byte, 0); }
+static inline u8   asm8086_rm(u8 byte)                 { return ASM8086_RM_MASK & byte; }
+static inline u8   asm8086_op_secondary(u8 byte)       { return asm8086_reg(byte, 3); }
 
 /**************************************************
  * ASM 8086 parser data types.
@@ -56,10 +58,17 @@ enum op_t : u16 {
   /** push */
   PUSH_RM        = 0xff,  // 1111 1111
   PUSH_REG       = 0x50,  // 0101 0000
+  PUSH_SEG_ES    = 0x06,  // 0000 0110
+  PUSH_SEG_CS    = 0x0e,  // 0000 1110
+  PUSH_SEG_SS    = 0x16,  // 0001 0110
+  PUSH_SEG_DS    = 0x1e,  // 0001 1110
 
   /** pop */
   POP_RM         = 0x8f,  // 1000 1111
   POP_REG        = 0x58,  // 0101 1000
+  POP_SEG_ES     = 0x07,  // 0000 0111
+  POP_SEG_SS     = 0x17,  // 0001 0111
+  POP_SEG_DS     = 0x1f,  // 0001 1111
 
   /** xchg */
   XCHG_RM        = 0x86, // 1000 0110
@@ -133,8 +142,9 @@ enum mod_t : u8 {
   MOD_INVALID,
 };
 
-enum HalfRegister : u8 { AL, CL, DL, BL, AH, CH, DH, BH };
-enum WideRegister : u8 { AX, CX, DX, BX, SP, BP, SI, DI };
+enum HalfRegister    : u8 { AL, CL, DL, BL, AH, CH, DH, BH };
+enum WideRegister    : u8 { AX, CX, DX, BX, SP, BP, SI, DI };
+enum SegmentRegister : u8 { ES, CS, SS, DS };
 
 /** Parsed representation of an ASM 8086 instruction.
  */
@@ -524,6 +534,22 @@ static Instruction parse_push_rm(PeekingIterator<char> &byte_stream, u16 _) {
   return instr;
 }
 
+static Instruction parse_push_pop_seg(PeekingIterator<char> &byte_stream, u16 opcode) {
+  const u8 first_byte = *byte_stream;
+
+  const Instruction instr {
+    .opcode = (op_t) opcode,
+    .mod = MOD_REG_NO_DISP,
+    .reg = asm8086_reg_seg(first_byte, 3),
+
+    // metadata
+    .bytes_read = 1,
+  };
+
+  ++byte_stream;
+  return instr;
+}
+
 static Instruction parse_pop_reg(PeekingIterator<char> &byte_stream, u16 _) {
   const Instruction instr {
     .opcode = POP_REG,
@@ -761,10 +787,17 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   // push
   { PUSH_REG,       &parse_push_reg },
   { PUSH_RM,        &parse_push_rm },
+  { PUSH_SEG_ES,    &parse_push_pop_seg },
+  { PUSH_SEG_CS,    &parse_push_pop_seg },
+  { PUSH_SEG_SS,    &parse_push_pop_seg },
+  { PUSH_SEG_DS,    &parse_push_pop_seg },
 
   // pop
   { POP_REG,        &parse_pop_reg },
   { POP_RM,         &parse_pop_rm },
+  { POP_SEG_ES,     &parse_push_pop_seg },
+  { POP_SEG_SS,     &parse_push_pop_seg },
+  { POP_SEG_DS,     &parse_push_pop_seg },
 
   // xchg
   { XCHG_RM,        &parse_xchg_rm },
@@ -782,36 +815,36 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { ADD_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
   // sub
-  {SUB_RM,      &parse_add_sub_cmp_rm },
-  {SUB_IMM_RM,  &parse_add_sub_cmp_imm_rm },
-  {SUB_IMM_ACC, &parse_add_sub_cmp_imm_acc },
+  {SUB_RM,          &parse_add_sub_cmp_rm },
+  {SUB_IMM_RM,      &parse_add_sub_cmp_imm_rm },
+  {SUB_IMM_ACC,     &parse_add_sub_cmp_imm_acc },
 
   // cmp
-  {CMP_RM,      &parse_add_sub_cmp_rm },
-  {CMP_IMM_RM,  &parse_add_sub_cmp_imm_rm },
-  {CMP_IMM_ACC, &parse_add_sub_cmp_imm_acc },
+  {CMP_RM,          &parse_add_sub_cmp_rm },
+  {CMP_IMM_RM,      &parse_add_sub_cmp_imm_rm },
+  {CMP_IMM_ACC,     &parse_add_sub_cmp_imm_acc },
 
   // conditional jump
-  {JE,          &parse_conditional_jump },
-  {JL,          &parse_conditional_jump },
-  {JLE,         &parse_conditional_jump },
-  {JB,          &parse_conditional_jump },
-  {JBE,         &parse_conditional_jump },
-  {JP,          &parse_conditional_jump },
-  {JO,          &parse_conditional_jump },
-  {JS,          &parse_conditional_jump },
-  {JNE,         &parse_conditional_jump },
-  {JNL,         &parse_conditional_jump },
-  {JNLE,        &parse_conditional_jump },
-  {JNB,         &parse_conditional_jump },
-  {JNBE,        &parse_conditional_jump },
-  {JNP,         &parse_conditional_jump },
-  {JNO,         &parse_conditional_jump },
-  {JNS,         &parse_conditional_jump },
-  {LOOP,        &parse_conditional_jump },
-  {LOOPZ,       &parse_conditional_jump },
-  {LOOPNZ,      &parse_conditional_jump },
-  {JCXZ,        &parse_conditional_jump },
+  {JE,              &parse_conditional_jump },
+  {JL,              &parse_conditional_jump },
+  {JLE,             &parse_conditional_jump },
+  {JB,              &parse_conditional_jump },
+  {JBE,             &parse_conditional_jump },
+  {JP,              &parse_conditional_jump },
+  {JO,              &parse_conditional_jump },
+  {JS,              &parse_conditional_jump },
+  {JNE,             &parse_conditional_jump },
+  {JNL,             &parse_conditional_jump },
+  {JNLE,            &parse_conditional_jump },
+  {JNB,             &parse_conditional_jump },
+  {JNBE,            &parse_conditional_jump },
+  {JNP,             &parse_conditional_jump },
+  {JNO,             &parse_conditional_jump },
+  {JNS,             &parse_conditional_jump },
+  {LOOP,            &parse_conditional_jump },
+  {LOOPZ,           &parse_conditional_jump },
+  {LOOPNZ,          &parse_conditional_jump },
+  {JCXZ,            &parse_conditional_jump },
 };
 
 /**
@@ -893,7 +926,13 @@ static constexpr std::string_view
   SP_STR = "sp",
   BP_STR = "bp",
   SI_STR = "si",
-  DI_STR = "di";
+  DI_STR = "di",
+
+  // segment registers
+  CS_STR = "cs",
+  DS_STR = "ds",
+  ES_STR = "es",
+  SS_STR = "ss";
 
 /**
  * Convert opcode to a string representation.
@@ -909,13 +948,20 @@ static std::string_view str_opcode(op_t op) {
       return MOV_STR;
 
     // push
-    case PUSH_RM: // fallthru
-    case PUSH_REG:
+    case PUSH_RM:     // fallthru
+    case PUSH_REG:    // fallthru
+    case PUSH_SEG_ES: // fallthru
+    case PUSH_SEG_CS: // fallthru
+    case PUSH_SEG_SS: // fallthru
+    case PUSH_SEG_DS:
       return PUSH_STR;
 
     // pop
-    case POP_RM: // fallthru
-    case POP_REG:
+    case POP_RM:     // fallthru
+    case POP_REG:    // fallthru
+    case POP_SEG_ES: // fallthru
+    case POP_SEG_SS: // fallthru
+    case POP_SEG_DS:
       return POP_STR;
 
     // pop
@@ -1008,6 +1054,19 @@ static std::string_view str_wide_register(WideRegister reg) {
     case SI: return SI_STR;
     case DI: return DI_STR;
     default: { throw std::invalid_argument("Invalid wide register"); }
+  }
+}
+
+/**
+ * Convert two-bit segment register code into a string representation.
+ */
+static inline std::string_view str_seg_register(SegmentRegister reg) {
+  switch (reg) {
+    case ES: return ES_STR;
+    case CS: return CS_STR;
+    case DS: return DS_STR;
+    case SS: return SS_STR;
+    default: { throw std::invalid_argument("Invalid segment register"); }
   }
 }
 
@@ -1141,6 +1200,18 @@ static void print_push_pop(const Instruction &instr) {
         << std::endl;
       break;
 
+    case PUSH_SEG_ES: // fallthru
+    case PUSH_SEG_CS: // fallthru
+    case PUSH_SEG_SS: // fallthru
+    case PUSH_SEG_DS: // fallthru
+    case POP_SEG_ES:  // fallthru
+    case POP_SEG_SS:  // fallthru
+    case POP_SEG_DS:
+      std::cout
+        << str_seg_register((SegmentRegister) instr.reg)
+        << std::endl;
+      break;
+
     default: throw std::invalid_argument("[print_push] Opcode not supported");
   }
 }
@@ -1244,10 +1315,17 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   // push
   { PUSH_REG,        &print_push_pop },
   { PUSH_RM,         &print_push_pop },
+  { PUSH_SEG_ES,     &print_push_pop },
+  { PUSH_SEG_CS,     &print_push_pop },
+  { PUSH_SEG_SS,     &print_push_pop },
+  { PUSH_SEG_DS,     &print_push_pop },
 
   // pop
   { POP_REG,         &print_push_pop },
   { POP_RM,          &print_push_pop },
+  { POP_SEG_ES,      &print_push_pop },
+  { POP_SEG_SS,      &print_push_pop },
+  { POP_SEG_DS,      &print_push_pop },
 
   // xchg
   { XCHG_RM,         &print_xchg },
@@ -1265,36 +1343,36 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { ADD_IMM_ACC,     &print_add_sub_cmp },
 
   // sub
-  {SUB_RM,      &print_add_sub_cmp },
-  {SUB_IMM_RM,  &print_add_sub_cmp },
-  {SUB_IMM_ACC, &print_add_sub_cmp },
+  {SUB_RM,           &print_add_sub_cmp },
+  {SUB_IMM_RM,       &print_add_sub_cmp },
+  {SUB_IMM_ACC,      &print_add_sub_cmp },
 
   // cmp
-  {CMP_RM,      &print_add_sub_cmp },
-  {CMP_IMM_RM,  &print_add_sub_cmp },
-  {CMP_IMM_ACC, &print_add_sub_cmp },
+  {CMP_RM,           &print_add_sub_cmp },
+  {CMP_IMM_RM,       &print_add_sub_cmp },
+  {CMP_IMM_ACC,      &print_add_sub_cmp },
 
   // conditional jump
-  {JE,          &print_conditional_jump },
-  {JL,          &print_conditional_jump },
-  {JLE,         &print_conditional_jump },
-  {JB,          &print_conditional_jump },
-  {JBE,         &print_conditional_jump },
-  {JP,          &print_conditional_jump },
-  {JO,          &print_conditional_jump },
-  {JS,          &print_conditional_jump },
-  {JNE,         &print_conditional_jump },
-  {JNL,         &print_conditional_jump },
-  {JNLE,        &print_conditional_jump },
-  {JNB,         &print_conditional_jump },
-  {JNBE,        &print_conditional_jump },
-  {JNP,         &print_conditional_jump },
-  {JNO,         &print_conditional_jump },
-  {JNS,         &print_conditional_jump },
-  {LOOP,        &print_conditional_jump },
-  {LOOPZ,       &print_conditional_jump },
-  {LOOPNZ,      &print_conditional_jump },
-  {JCXZ,        &print_conditional_jump },
+  {JE,               &print_conditional_jump },
+  {JL,               &print_conditional_jump },
+  {JLE,              &print_conditional_jump },
+  {JB,               &print_conditional_jump },
+  {JBE,              &print_conditional_jump },
+  {JP,               &print_conditional_jump },
+  {JO,               &print_conditional_jump },
+  {JS,               &print_conditional_jump },
+  {JNE,              &print_conditional_jump },
+  {JNL,              &print_conditional_jump },
+  {JNLE,             &print_conditional_jump },
+  {JNB,              &print_conditional_jump },
+  {JNBE,             &print_conditional_jump },
+  {JNP,              &print_conditional_jump },
+  {JNO,              &print_conditional_jump },
+  {JNS,              &print_conditional_jump },
+  {LOOP,             &print_conditional_jump },
+  {LOOPZ,            &print_conditional_jump },
+  {LOOPNZ,           &print_conditional_jump },
+  {JCXZ,             &print_conditional_jump },
 };
 
 static void print_instr(const Instruction &instr) {
