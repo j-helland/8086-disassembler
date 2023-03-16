@@ -14,17 +14,24 @@
  * Assume little-endian.
  **************************************************/
 static constexpr u8 ASM8086_W_BIT       = 0x01;
+static constexpr u8 ASM8086_Z_BIT       = ASM8086_W_BIT;
 static constexpr u8 ASM8086_D_BIT       = 0x02;
+static constexpr u8 ASM8086_V_BIT       = ASM8086_D_BIT;
+static constexpr u8 ASM8086_S_BIT       = ASM8086_D_BIT;
 static constexpr u8 ASM8086_MODE_OFFSET = 6;
 static constexpr u8 ASM8086_MODE_MASK   = (0x03 << ASM8086_MODE_OFFSET);
 static constexpr u8 ASM8086_REG_MASK    = 0x07;
 static constexpr u8 ASM8086_RM_MASK     = 0x07;
 
+constexpr static inline u16 concat(u8 hi, u8 lo) { return (static_cast<u16>(hi) << 8) | static_cast<u16>(lo); }
+
 // Avoid macros in favor of inline so we can let the compiler "do the right thing".
 static inline bool asm8086_wbit(u8 byte, u8 offset)    { return !!(((ASM8086_W_BIT << offset) & byte) >> offset); }
 static inline bool asm8086_wbit(u8 byte)               { return asm8086_wbit(byte, 0); }
 static inline bool asm8086_dbit(u8 byte)               { return !!(ASM8086_D_BIT & byte); }
-static inline bool asm8086_sbit(u8 byte)               { return !!(ASM8086_D_BIT & byte); }
+static inline bool asm8086_vbit(u8 byte)               { return !!(ASM8086_V_BIT & byte); }
+static inline bool asm8086_sbit(u8 byte)               { return !!(ASM8086_S_BIT & byte); }
+static inline bool asm8086_zbit(u8 byte)               { return !!(ASM8086_Z_BIT & byte); }
 static inline u8   asm8086_mode(u8 byte)               { return (ASM8086_MODE_MASK & byte) >> ASM8086_MODE_OFFSET; }
 static inline u8   asm8086_reg(u8 byte, u8 offset)     { return ((ASM8086_REG_MASK << offset) & byte) >> offset; }
 static inline u8   asm8086_reg(u8 byte)                { return asm8086_reg(byte, 0); }
@@ -39,26 +46,27 @@ static inline u8   asm8086_op_secondary(u8 byte)       { return asm8086_reg(byte
 /**
  * Opcodes are right-padded to a full byte to avoid an extra bitshift during parsing.
  */
-// This should only be used for comparisons, not as an actual opcode.
-constexpr u16 REQUIRES_SECOND_BYTE_1 = 0x80; // 1000 0000
-constexpr u16 REQUIRES_SECOND_BYTE_2 = 0xff; // 1111 1111
-constexpr u16 REQUIRES_SECOND_BYTE_3 = 0xfe; // 1111 1110
+// Common first bytes of two-byte opcodes.
+constexpr u16 FB_0x80 = 0x80; // 1000 0000
+constexpr u16 FB_0xff = 0xff; // 1111 1111
+constexpr u16 FB_0xfe = 0xfe; // 1111 1110
+constexpr u16 FB_0xf6 = 0xf6; // 1111 0110
+constexpr u16 FB_0xd0 = 0xd0; // 1101 0000
+constexpr u16 FB_0xd4 = 0xd4; // 1101 0100
+constexpr u16 FB_0xd5 = 0xd5; // 1101 0101
+constexpr u16 FB_0xc6 = 0xc6; // 1100 0110
+constexpr u16 FB_0x8e = 0x8e; // 1000 1110
 
 enum op_t : u16 {
   /** mov */
-  // Immediate-mode to register mov.
   MOV_IMM_REG    = 0xb0,  // 1011 0000
-  // Immediate-mode to register/memory mov.
-  MOV_IMM_MEM    = 0xc6,  // 1100 0110
-  // Register/memory to register mov.
+  MOV_IMM_MEM    = concat(FB_0xc6, 0x00),  // 1100 0110 0000 0000
   MOV_RM         = 0x88,  // 1000 1000
-  // Memory to accumulator mov. The AX register is the de facto accumulator register.
   MOV_MEM_TO_ACC = 0xa0,  // 1010 0000
-  // Accumulator to memory mov. The AX register is the de facto accumulator register.
   MOV_ACC_TO_MEM = 0xa2,  // 1010 0010
 
   /** push */
-  PUSH_RM        = (REQUIRES_SECOND_BYTE_2 << 8) | 0x6,  // 1111 1111 0110
+  PUSH_RM        = concat(FB_0xff, 0x30),   // 1111 1111 0011 0000
   PUSH_REG       = 0x50,  // 0101 0000
   PUSH_SEG_ES    = 0x06,  // 0000 0110
   PUSH_SEG_CS    = 0x0e,  // 0000 1110
@@ -94,39 +102,104 @@ enum op_t : u16 {
 
   /** add */
   ADD_RM         = 0x00,                              // 0000 0000
-  ADD_IMM_RM     = (REQUIRES_SECOND_BYTE_1 << 8) | 0x0, // 1000 0000 0000
+  ADD_IMM_RM     = concat(FB_0x80, 0x00), // 1000 0000 0000 0000
   ADD_IMM_ACC    = 0x04,                              // 0000 0100
 
   /** add with carry */
   ADC_RM         = 0x10,                              // 0001 0000
-  ADC_IMM_RM     = (REQUIRES_SECOND_BYTE_1 << 8) | 0x2, // 1000 0000 0010
+  ADC_IMM_RM     = concat(FB_0x80, 0x10), // 1000 0000 0001 0000
   ADC_IMM_ACC    = 0x14,                              // 0001 0100
 
   /** increment */
-  INC_RM         = (REQUIRES_SECOND_BYTE_3 << 8) | 0x0, // 1111 1110 0000
+  INC_RM         = concat(FB_0xfe, 0x00), // 1111 1110 0000 0000
   INC_REG        = 0x40, // 0100 0000
   AAA            = 0x37, // 0011 0111
   DAA            = 0x27, // 0010 0111
 
   /** decrement */
-  DEC_RM         = (REQUIRES_SECOND_BYTE_3 << 8) | 0x1, // 1111 1110 0001
+  DEC_RM         = concat(FB_0xfe, 0x08), // 1111 1110 0000 1000
   DEC_REG        = 0x48, // 0100 1000
-  NEG            = 0xf6, // 1111 0110
+  NEG            = concat(FB_0xf6, 0x18), // 1111 0110 0001 1000
 
   /** sub */
   SUB_RM         = 0x28,                              // 0010 1000
-  SUB_IMM_RM     = (REQUIRES_SECOND_BYTE_1 << 8) | 0x5, // 1000 0000 0101
+  SUB_IMM_RM     = concat(FB_0x80, 0x28), // 1000 0000 0010 1000
   SUB_IMM_ACC    = 0x2c,                              // 0010 1100
 
   /** sub with borrow */
   SBB_RM         = 0x18,                              // 0001 1000
-  SBB_IMM_RM     = (REQUIRES_SECOND_BYTE_1 << 8) | 0x3, // 1000 0000 0011
+  SBB_IMM_RM     = concat(FB_0x80, 0x18), // 1000 0000 0001 1000
   SBB_IMM_ACC    = 0x1c,                              // 0001 1100
 
   /** cmp */
   CMP_RM         = 0x38,                              // 0011 1000
-  CMP_IMM_RM     = (REQUIRES_SECOND_BYTE_1 << 8) | 0x7, // 1000 0000 0111
+  CMP_IMM_RM     = concat(FB_0x80, 0x38), // 1000 0000 0011 1000
   CMP_IMM_ACC    = 0x3c,                              // 0011 1100
+  AAS            = 0x3f, // 0011 1111
+  DAS            = 0x2f, // 0010 1111
+
+  /** mul */
+  MUL            = concat(FB_0xf6, 0x20), // 1111 0110 0010 0000
+  IMUL           = concat(FB_0xf6, 0x28), // 1111 0110 0010 1000
+  AAM            = concat(FB_0xd4, 0x0a), // 1101 0100 0000 1010
+  DIV            = concat(FB_0xf6, 0x30), // 1111 0110 0011 0000
+  IDIV           = concat(FB_0xf6, 0x38), // 1111 0110 0011 1000
+  AAD            = concat(FB_0xd5, 0x0a), // 1101 0101 0000 1010
+  CBW            = 0x98, // 1001 1000
+  CWD            = 0x99, // 1001 1001
+
+  /** logic */
+  NOT            = concat(FB_0xf6, 0x10), // 1111 0110 0001 0000
+  SHL            = concat(FB_0xd0, 0x20), // 1101 0000 0010 0000
+  SHR            = concat(FB_0xd0, 0x28), // 1101 0000 0010 1000
+  SAR            = concat(FB_0xd0, 0x38), // 1101 0000 0011 1000
+  ROL            = concat(FB_0xd0, 0x00), // 1101 0000 0000 0000
+  ROR            = concat(FB_0xd0, 0x08), // 1101 0000 0000 1000
+  RCL            = concat(FB_0xd0, 0x10), // 1101 0000 0001 0000
+  RCR            = concat(FB_0xd0, 0x18), // 1101 0000 0001 1000
+
+  AND_RM         = 0x20, // 0010 0000
+  AND_IMM_RM     = concat(FB_0x80, 0x20), // 1000 0000 0010 0000
+  AND_IMM_ACC    = 0x24, // 0010 0100
+
+  TEST_RM        = 0x84, // 1000 0100
+  TEST_IMM_RM    = concat(FB_0xf6, 0x00), // 1111 0110 0000 0000
+  TEST_IMM_ACC   = 0xa8, // 1010 1000
+
+  OR_RM          = 0x08, // 0000 1000
+  OR_IMM_RM      = concat(FB_0x80, 0x08), // 1000 0000 1000 0000
+  OR_IMM_ACC     = 0x0c, // 0000 1100
+
+  XOR_RM         = 0x30, // 0011 0000
+  XOR_IMM_RM     = concat(FB_0x80, 0x30), // 0011 0100 0011 1000
+  XOR_IMM_ACC    = 0x34,
+
+  /** string manipulation */
+  REP            = 0xf2, // 1111 0010
+  MOVS           = 0xa4, // 1010 0100
+  CMPS           = 0xa6, // 1010 0110
+  SCAS           = 0xae, // 1010 1110
+  LODS           = 0xac, // 1010 1100
+  STOS           = 0xaa, // 1010 1010
+
+  /** control transfer */
+  CALL_DIR_SEG        = 0xe8, // 1110 1000
+  CALL_INDIR_SEG      = concat(FB_0xff, 0x10), // 1111 1111 0001 0000
+  CALL_DIR_INTERSEG   = 0x9a, // 1001 1010
+  CALL_INDIR_INTERSEG = concat(FB_0xff, 0x18), // 1111 1111 0001 1000
+
+  /** unconditional jump */
+  JMP_DIR_SEG        = 0xe9, // 1110 1001
+  JMP_DIR_SEG_SHORT  = 0xeb, // 1110 1011
+  JMP_INDIR_SEG      = concat(FB_0xff, 0x20), // 1111 1111 0010 0000
+  JMP_DIR_INTERSEG   = 0xea, // 1110 1010
+  JMP_INDIR_INTERSEG = concat(FB_0xff, 0x28), // 1111 1111 0010 1000
+
+  /** return from call */
+  RET_SEG                = 0xc3, // 1100 0011
+  RET_SEG_IMM_TO_SP      = 0xc2, // 1100 0010
+  RET_INTERSEG           = 0xcb, // 1100 1011
+  RET_INTERSEG_IMM_TO_SP = 0xca, // 1100 1010
 
   /** conditional jump */
   JE             = 0x74, // 0111 0100
@@ -150,6 +223,25 @@ enum op_t : u16 {
   LOOPNZ         = 0xe0, // 1110 0000
   JCXZ           = 0xe3, // 1110 0011
 
+  /** interrupt */
+  INT            = 0xcd, // 1100 1101
+  INT3           = 0xcc, // 1100 1100
+  INTO           = 0xce, // 1100 1110
+  IRET           = 0xcf, // 1100 1111
+
+  /** processor control */
+  CLC            = 0xf8, // 1111 1000
+  CMC            = 0xf5, // 1111 0101
+  STC            = 0xf9, // 1111 1001
+  CLD            = 0xfc, // 1111 1100
+  STD            = 0xfd, // 1111 1101
+  CLI            = 0xfa, // 1111 1010
+  STI            = 0xfb, // 1111 1011
+  HLT            = 0xf4, // 1111 0100
+  WAIT           = 0x9b, // 1001 1011
+  ESC            = 0xd8, // 1101 1000
+  LOCK           = 0xf0, // 1111 0000
+
   OP_INVALID,
 };
 
@@ -164,6 +256,15 @@ static constexpr u16 OPCODE_MASKS[] {
   0xfffc,  // ... 1100
   0xfff8,  // ... 1000
   0xfff0,  // ... 0000
+};
+
+/**
+ * These masks are used to extract the opcode-relevant bits from the second byte.
+ */
+static constexpr u8 SECOND_BYTE_MASKS[] {
+  0xff, // 1111 1111
+  0x38, // 0011 1000
+  0x20, // 0010 0000
 };
 
 enum mod_t : u8 {
@@ -197,17 +298,35 @@ struct Instruction {
   // Register/memory field. This could be either the src or dst depending on the D bit.
   u8 rm;
 
-  /* W bit. Specifies whether this is a byte or word operation.
-   * <p>- Dictates whether registers are half or full width.
-   * <p>- Dictates whether the data field is byte or word length.
-   */
-  bool wbit;
+  union {
+    /* W bit. Specifies whether this is a byte or word operation.
+     * <p>- Dictates whether registers are half or full width.
+     * <p>- Dictates whether the data field is byte or word length.
+     */
+    bool wbit;
 
-  /* D bit. Specifies the "direction" of the operation.
-   * <p> true: reg field is the dst.
-   * <p> false: reg field is the src.
-   */
-  bool dbit;
+    /*
+     * Z bit.
+     * <p> true: repeat/loop while zero flag is clear
+     * <p> false: repeat/loop while zero flag is set
+     */
+    bool zbit;
+  };
+
+  union {
+    /* D bit. Specifies the "direction" of the operation.
+     * <p> true: reg field is the dst.
+     * <p> false: reg field is the src.
+     */
+    bool dbit;
+
+    /*
+     * V bit.
+     * <p> true: shift/rotate count is specified in CL register.
+     * <p> false: shift/rotate count is 1.
+     */
+    bool vbit;
+  };
 
   union {
     // Displacement data. Used for calculating an address offset. Could be byte or word length depending on the mod field.
@@ -427,9 +546,59 @@ static bool is_direct_addressing_mode(mod_t mod, u8 rm) {
   return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
-static Instruction parse_no_args(PeekingIterator<char> &byte_stream, u16 opcode) {
+static Instruction parse_one_byte_no_args(PeekingIterator<char> &byte_stream, u16 opcode) {
   ++byte_stream;
-  return { .opcode = (op_t) opcode, };
+  return {
+    .opcode = (op_t) opcode,
+
+    // metadata
+    .bytes_read = 1,
+  };
+}
+
+static Instruction parse_one_byte_with_byte_data(PeekingIterator<char> &byte_stream, u16 opcode) {
+  const Instruction instr {
+    .opcode = (op_t) opcode,
+    .data = parse_data(++byte_stream, false),
+
+    // metadata
+    .bytes_read = 2,
+  };
+
+  ++byte_stream;
+  return instr;
+}
+
+static Instruction parse_one_byte_with_word_data(PeekingIterator<char> &byte_stream, u16 opcode) {
+  const Instruction instr {
+    .opcode = (op_t) opcode,
+    .data = parse_data(++byte_stream, true),
+
+    // metadata
+    .bytes_read = 3,
+  };
+
+  ++byte_stream;
+  return instr;
+}
+
+static Instruction parse_rep(PeekingIterator<char> &byte_stream, u16 opcode) {
+  const u8 first_byte = *byte_stream,
+           second_byte = *(++byte_stream);
+
+  Instruction instr {
+    .opcode = (op_t) opcode,
+    .wbit = asm8086_wbit(second_byte),
+
+    // Store the string manipulation opcode in the data field
+    .data = (u16) (0xfe & second_byte),
+
+    // metadata
+    .bytes_read = 2,
+  };
+
+  ++byte_stream;
+  return instr;
 }
 
 static Instruction parse_mov_imm_reg(PeekingIterator<char> &byte_stream, u16 _) {
@@ -532,11 +701,9 @@ static Instruction parse_mov_acc_to_mem(PeekingIterator<char> &byte_stream, u16 
 }
 
 static Instruction parse_mov_mem_to_acc(PeekingIterator<char> &byte_stream, u16 _) {
-  const u8 first_byte = *byte_stream;
-
   const Instruction instr {
     .opcode = MOV_MEM_TO_ACC,
-    .wbit   = asm8086_wbit(first_byte),
+    .wbit   = asm8086_wbit(*byte_stream),
     .dbit   = true,
     .addr   = parse_data(++byte_stream, true),
     .bytes_read = 3,
@@ -654,6 +821,17 @@ static Instruction parse_one_byte_with_reg(PeekingIterator<char> &byte_stream, u
   return instr;
 }
 
+static Instruction parse_two_bytes_no_args(PeekingIterator<char> &byte_stream, u16 opcode) {
+  ++byte_stream;
+  ++byte_stream;
+  return {
+    .opcode = (op_t) opcode,
+
+    // metadata
+    .bytes_read = 2,
+  };
+}
+
 static Instruction parse_in_fix(PeekingIterator<char> &byte_stream, u16 _) {
   const Instruction instr {
     .opcode = IN_FIX,
@@ -738,6 +916,23 @@ static Instruction parse_add_sub_cmp_rm(PeekingIterator<char> &byte_stream, u16 
     .opcode = (op_t) opcode,
     .wbit = asm8086_wbit(*byte_stream),
     .dbit = asm8086_dbit(*byte_stream),
+
+    // metadata
+    .bytes_read = 2,
+  };
+
+  parse_and_insert_mod_reg_rm(instr, ++byte_stream);
+  parse_and_insert_displacement(instr, byte_stream);
+
+  ++byte_stream;
+  return instr;
+}
+
+static Instruction parse_shift_rotate(PeekingIterator<char> &byte_stream, u16 opcode) {
+  Instruction instr {
+    .opcode = (op_t) opcode,
+    .wbit = asm8086_wbit(*byte_stream),
+    .vbit = asm8086_vbit(*byte_stream),
 
     // metadata
     .bytes_read = 2,
@@ -839,31 +1034,43 @@ static Instruction parse_conditional_jump(PeekingIterator<char> &byte_stream, u1
 static Instruction parse_instruction(PeekingIterator<char> &, u16);
 
 static Instruction parse_requires_second_byte(PeekingIterator<char> &byte_stream, u16 opcode) {
-  opcode = (opcode << 8) | asm8086_op_secondary(byte_stream.peek());
+  for (const u8 mask : SECOND_BYTE_MASKS) {
+    u16 opcode_candidate = concat(opcode, mask & byte_stream.peek());
 
-  // Handle special case: ADD_IMM_RM code is the same as REQUIRES_SECOND_BYTE_1 code.
-  if (opcode == ADD_IMM_RM) {
-    return parse_add_sub_cmp_imm_rm(byte_stream, opcode);
+    // Handle special case: ADD_IMM_RM code is the same as FB_0x80 code.
+    if (opcode_candidate == ADD_IMM_RM) {
+      return parse_add_sub_cmp_imm_rm(byte_stream, opcode_candidate);
+    }
+
+    try {
+      return parse_instruction(byte_stream, opcode_candidate);
+    } catch (const std::invalid_argument &e) {}
   }
-
-  return parse_instruction(byte_stream, opcode);
+  throw std::invalid_argument("no matching opcode after checking second byte");
 }
 
 static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
-  // opcode requires second byte to parse. This will trigger a recursive call.
-  { (op_t) REQUIRES_SECOND_BYTE_1, &parse_requires_second_byte },
-  { (op_t) REQUIRES_SECOND_BYTE_2, &parse_requires_second_byte },
-  { (op_t) REQUIRES_SECOND_BYTE_3, &parse_requires_second_byte },
+  // If the first opcode byte matches any of these, it means that a second byte is required to fully assemble the
+  // opcode. This triggers a recursive call.
+  { (op_t) FB_0x80, &parse_requires_second_byte },
+  { (op_t) FB_0xff, &parse_requires_second_byte },
+  { (op_t) FB_0xfe, &parse_requires_second_byte },
+  { (op_t) FB_0xf6, &parse_requires_second_byte },
+  { (op_t) FB_0xd0, &parse_requires_second_byte },
+  { (op_t) FB_0xd4, &parse_requires_second_byte },
+  { (op_t) FB_0xd5, &parse_requires_second_byte },
+  { (op_t) FB_0xc6, &parse_requires_second_byte },
+  { (op_t) FB_0x8e, &parse_requires_second_byte },
 
   // mov
-  { MOV_IMM_REG,                   &parse_mov_imm_reg },
-  { MOV_IMM_MEM,                   &parse_mov_imm_mem },
-  { MOV_RM,                        &parse_mov_rm },
-  { MOV_ACC_TO_MEM,                &parse_mov_acc_to_mem },
-  { MOV_MEM_TO_ACC,                &parse_mov_mem_to_acc },
+  { MOV_IMM_REG,    &parse_mov_imm_reg },
+  { MOV_IMM_MEM,    &parse_mov_imm_mem },
+  { MOV_RM,         &parse_mov_rm },
+  { MOV_ACC_TO_MEM, &parse_mov_acc_to_mem },
+  { MOV_MEM_TO_ACC, &parse_mov_mem_to_acc },
 
   // push
-  { PUSH_REG,                      &parse_push_reg },
+  { PUSH_REG,       &parse_push_reg },
   { PUSH_RM,        &parse_push_rm },
   { PUSH_SEG_ES,    &parse_push_pop_seg },
   { PUSH_SEG_CS,    &parse_push_pop_seg },
@@ -888,14 +1095,14 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { OUT_VAR,        &parse_out_var },
 
   // output to
-  { XLAT,           &parse_no_args },
+  { XLAT, &parse_one_byte_no_args },
   { LEA,            &parse_load },
   { LDS,            &parse_load },
   { LES,            &parse_load },
-  { LAHF,           &parse_no_args },
-  { SAHF,           &parse_no_args },
-  { PUSHF,          &parse_no_args },
-  { POPF,           &parse_no_args },
+  { LAHF, &parse_one_byte_no_args },
+  { SAHF, &parse_one_byte_no_args },
+  { PUSHF, &parse_one_byte_no_args },
+  { POPF, &parse_one_byte_no_args },
 
   // add
   { ADD_RM,         &parse_add_sub_cmp_rm },
@@ -910,8 +1117,8 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   // increment
   { INC_RM, &parse_inc_dec_neg_rm },
   { INC_REG, &parse_inc_dec_neg_reg },
-  { AAA,            &parse_no_args },
-  { DAA,            &parse_no_args },
+  { AAA, &parse_one_byte_no_args },
+  { DAA, &parse_one_byte_no_args },
 
   // decrement
   { DEC_RM, &parse_inc_dec_neg_rm },
@@ -928,32 +1135,101 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { SBB_IMM_RM,     &parse_add_sub_cmp_imm_rm },
   { SBB_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
-  // cmp
+  // compare
   { CMP_RM,         &parse_add_sub_cmp_rm },
   { CMP_IMM_RM,     &parse_add_sub_cmp_imm_rm },
   { CMP_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+  { AAS,            &parse_one_byte_no_args },
+  { DAS,            &parse_one_byte_no_args },
+  { MUL,            &parse_inc_dec_neg_rm },
+  { IMUL,           &parse_inc_dec_neg_rm },
+  { AAM,            &parse_two_bytes_no_args },
+  { DIV,            &parse_inc_dec_neg_rm },
+  { IDIV,           &parse_inc_dec_neg_rm },
+  { AAD,            &parse_two_bytes_no_args },
+  { CBW,            &parse_one_byte_no_args },
+  { CWD,            &parse_one_byte_no_args },
+
+  // logic
+  { NOT,            &parse_inc_dec_neg_rm },
+  { SHL,            &parse_shift_rotate },
+  { SHR,            &parse_shift_rotate },
+  { SAR,            &parse_shift_rotate },
+  { ROL,            &parse_shift_rotate },
+  { ROR,            &parse_shift_rotate },
+  { RCL,            &parse_shift_rotate },
+  { RCR,            &parse_shift_rotate },
+
+  { AND_RM,         &parse_add_sub_cmp_rm },
+  { AND_IMM_RM,     &parse_add_sub_cmp_imm_rm },
+  { AND_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+
+  { TEST_RM,        &parse_add_sub_cmp_rm },
+  { TEST_IMM_RM,    &parse_add_sub_cmp_imm_rm },
+  { TEST_IMM_ACC,   &parse_add_sub_cmp_imm_acc },
+
+  { OR_RM,          &parse_add_sub_cmp_rm },
+  { OR_IMM_RM,      &parse_add_sub_cmp_imm_rm },
+  { OR_IMM_ACC,     &parse_add_sub_cmp_imm_acc },
+
+  { XOR_RM,         &parse_add_sub_cmp_rm },
+  { XOR_IMM_RM,     &parse_add_sub_cmp_imm_rm },
+  { XOR_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
+
+  // string manipulation
+  { REP,            &parse_rep },
+
+  // control transfer
+  { CALL_INDIR_SEG, &parse_inc_dec_neg_rm },
+
+  // unconditional jump
+  { JMP_INDIR_SEG,  &parse_inc_dec_neg_rm },
+
+  // return from call
+  { RET_SEG,                &parse_one_byte_no_args },
+  { RET_SEG_IMM_TO_SP,      &parse_one_byte_with_word_data },
+  { RET_INTERSEG,           &parse_one_byte_no_args },
+  { RET_INTERSEG_IMM_TO_SP, &parse_one_byte_with_word_data },
 
   // conditional jump
-  { JE,              &parse_conditional_jump },
-  { JL,              &parse_conditional_jump },
-  { JLE,             &parse_conditional_jump },
-  { JB,              &parse_conditional_jump },
-  { JBE,             &parse_conditional_jump },
-  { JP,              &parse_conditional_jump },
-  { JO,              &parse_conditional_jump },
-  { JS,              &parse_conditional_jump },
-  { JNE,             &parse_conditional_jump },
-  { JNL,             &parse_conditional_jump },
-  { JNLE,            &parse_conditional_jump },
-  { JNB,             &parse_conditional_jump },
-  { JNBE,            &parse_conditional_jump },
-  { JNP,             &parse_conditional_jump },
-  { JNO,             &parse_conditional_jump },
-  { JNS,             &parse_conditional_jump },
-  { LOOP,            &parse_conditional_jump },
-  { LOOPZ,           &parse_conditional_jump },
-  { LOOPNZ,          &parse_conditional_jump },
-  { JCXZ,            &parse_conditional_jump },
+  { JE,             &parse_conditional_jump },
+  { JL,             &parse_conditional_jump },
+  { JLE,            &parse_conditional_jump },
+  { JB,             &parse_conditional_jump },
+  { JBE,            &parse_conditional_jump },
+  { JP,             &parse_conditional_jump },
+  { JO,             &parse_conditional_jump },
+  { JS,             &parse_conditional_jump },
+  { JNE,            &parse_conditional_jump },
+  { JNL,            &parse_conditional_jump },
+  { JNLE,           &parse_conditional_jump },
+  { JNB,            &parse_conditional_jump },
+  { JNBE,           &parse_conditional_jump },
+  { JNP,            &parse_conditional_jump },
+  { JNO,            &parse_conditional_jump },
+  { JNS,            &parse_conditional_jump },
+  { LOOP,           &parse_conditional_jump },
+  { LOOPZ,          &parse_conditional_jump },
+  { LOOPNZ,         &parse_conditional_jump },
+  { JCXZ,           &parse_conditional_jump },
+
+  // interrupt
+  { INT,            &parse_one_byte_with_byte_data },
+  { INT3,           &parse_one_byte_no_args },
+  { INTO,           &parse_one_byte_no_args },
+  { IRET,           &parse_one_byte_no_args },
+
+  // processor control
+  { CLC,            &parse_one_byte_no_args },
+  { CMC,            &parse_one_byte_no_args },
+  { STC,            &parse_one_byte_no_args },
+  { CLD,            &parse_one_byte_no_args },
+  { STD,            &parse_one_byte_no_args },
+  { CLI,            &parse_one_byte_no_args },
+  { STI,            &parse_one_byte_no_args },
+  { HLT,            &parse_one_byte_no_args },
+  { WAIT,           &parse_one_byte_no_args },
+  { LOCK,           &parse_one_byte_no_args },
 };
 
 /**
@@ -1006,6 +1282,37 @@ static constexpr std::string_view
   DEC_STR  = "dec",
   NEG_STR  = "neg",
   CMP_STR  = "cmp",
+  AAS_STR  = "aas",
+  DAS_STR  = "das",
+  MUL_STR  = "mul",
+  IMUL_STR = "imul",
+  AAM_STR  = "aam",
+  DIV_STR  = "div",
+  IDIV_STR = "idiv",
+  AAD_STR  = "aad",
+  CBW_STR  = "cbw",
+  CWD_STR  = "cwd",
+  NOT_STR  = "not",
+  SHL_STR  = "shl",
+  SHR_STR  = "shr",
+  SAR_STR  = "sar",
+  ROL_STR  = "rol",
+  ROR_STR  = "ror",
+  RCL_STR  = "rcl",
+  RCR_STR  = "rcr",
+  AND_STR  = "and",
+  TEST_STR = "test",
+  OR_STR   = "or",
+  XOR_STR  = "xor",
+
+  // string manipulation
+  REP_STR  = "rep",
+  MOVS_STR = "movs",
+  CMPS_STR = "cmps",
+  SCAS_STR = "scas",
+  LODS_STR = "lods",
+  STOS_STR = "stos",
+  CALL_STR = "call",
 
   // output to
   XLAT_STR  = "xlat",
@@ -1016,6 +1323,12 @@ static constexpr std::string_view
   SAHF_STR  = "sahf",
   PUSHF_STR = "pushf",
   POPF_STR  = "popf",
+
+  // unconditional jump
+  JMP_STR    = "jmp",
+
+  // return from call
+  RET_STR    = "ret",
 
   // conditional jump
   JE_STR     = "je",
@@ -1038,6 +1351,23 @@ static constexpr std::string_view
   LOOPZ_STR  = "loopz",
   LOOPNZ_STR = "loopnz",
   JCXZ_STR   = "jcxz",
+
+  // interrupt
+  INT_STR    = "int",
+  INTO_STR   = "into",
+  IRET_STR   = "iret",
+
+  // processor control
+  CLC_STR    = "clc",
+  CMC_STR    = "cmc",
+  STC_STR    = "stc",
+  CLD_STR    = "cld",
+  STD_STR    = "std",
+  CLI_STR    = "cli",
+  STI_STR    = "sti",
+  HLT_STR    = "hlt",
+  WAIT_STR   = "wait",
+  LOCK_STR   = "lock",
 
   // half word-length registers
   AL_STR = "al",
@@ -1157,11 +1487,81 @@ static std::string_view str_opcode(op_t op) {
     case SBB_IMM_ACC:
       return SBB_STR;
 
-    // cmp
+    // compare
     case CMP_RM:     // fallthru
     case CMP_IMM_RM: // fallthru
     case CMP_IMM_ACC:
       return CMP_STR;
+
+    case AAS: return AAS_STR;
+    case DAS: return DAS_STR;
+    case MUL: return MUL_STR;
+    case IMUL: return IMUL_STR;
+    case AAM: return AAM_STR;
+    case DIV: return DIV_STR;
+    case IDIV: return IDIV_STR;
+    case AAD: return AAD_STR;
+    case CBW: return CBW_STR;
+    case CWD: return CWD_STR;
+    case NOT: return NOT_STR;
+    case SHL: return SHL_STR;
+    case SHR: return SHR_STR;
+    case SAR: return SAR_STR;
+    case ROL: return ROL_STR;
+    case ROR: return ROR_STR;
+    case RCL: return RCL_STR;
+    case RCR: return RCR_STR;
+
+    // logic
+    case AND_RM: // fallthru
+    case AND_IMM_RM: // fallthru
+    case AND_IMM_ACC:
+      return AND_STR;
+
+    case TEST_RM: // fallthru
+    case TEST_IMM_RM: // fallthru
+    case TEST_IMM_ACC:
+      return TEST_STR;
+
+    case OR_RM: // fallthru
+    case OR_IMM_RM: // fallthru
+    case OR_IMM_ACC:
+      return OR_STR;
+
+    case XOR_RM: // fallthru
+    case XOR_IMM_RM: // fallthru
+    case XOR_IMM_ACC:
+      return XOR_STR;
+
+    // string manipulation
+    case REP: return REP_STR;
+    case MOVS: return MOVS_STR;
+    case CMPS: return CMPS_STR;
+    case SCAS: return SCAS_STR;
+    case LODS: return LODS_STR;
+    case STOS: return STOS_STR;
+
+    // control transfer
+    case CALL_DIR_SEG:        // fallthru
+    case CALL_INDIR_SEG:      // fallthru
+    case CALL_DIR_INTERSEG:   // fallthru
+    case CALL_INDIR_INTERSEG:
+      return CALL_STR;
+
+    // unconditional jump
+    case JMP_INDIR_SEG:      // fallthru
+    case JMP_DIR_SEG:        // fallthru
+    case JMP_DIR_INTERSEG:   // fallthru
+    case JMP_DIR_SEG_SHORT:  // fallthru
+    case JMP_INDIR_INTERSEG:
+      return JMP_STR;
+
+    // return from call
+    case RET_SEG:                // fallthru
+    case RET_INTERSEG:           // fallthru
+    case RET_SEG_IMM_TO_SP:      // fallthru
+    case RET_INTERSEG_IMM_TO_SP:
+      return RET_STR;
 
     // conditional jump
     case JE: return JE_STR;
@@ -1184,6 +1584,26 @@ static std::string_view str_opcode(op_t op) {
     case LOOPZ: return LOOPZ_STR;
     case LOOPNZ: return LOOPNZ_STR;
     case JCXZ: return JCXZ_STR;
+
+    // interrupt
+    case INT: // fallthru
+    case INT3:
+      return INT_STR;
+
+    case INTO: return INTO_STR;
+    case IRET: return IRET_STR;
+
+    // processor control
+    case CLC: return CLC_STR;
+    case CMC: return CMC_STR;
+    case STC: return STC_STR;
+    case CLD: return CLD_STR;
+    case STD: return STD_STR;
+    case CLI: return CLI_STR;
+    case STI: return STI_STR;
+    case HLT: return HLT_STR;
+    case WAIT: return WAIT_STR;
+    case LOCK: return LOCK_STR;
 
     default: { throw std::invalid_argument("[str_opcode] Invalid opcode"); }
   }
@@ -1323,18 +1743,28 @@ static void print_no_args(const Instruction &instr) {
   std::cout << str_opcode(instr.opcode) << std::endl;
 }
 
+static void print_prefix(const Instruction &instr) {
+  std::cout << str_opcode(instr.opcode) << " ";
+}
+
+static std::string str_instr_arg_size(const Instruction &instr) {
+  // Memory modes require a size to avoid ambiguity.
+  if (instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_NO_DISP) {
+    return (instr.wbit) ? "word " : "byte ";
+  }
+  return "";
+}
+
 /**
  * Print the ASM 8086 string representation of a parsed mov instruction to stdout.
  */
 static void print_mov(const Instruction &instr) {
-  std::cout
-    << str_opcode(instr.opcode)
-    << " ";
+  print_prefix(instr);
 
   std::string
     src = str_reg_mem_field_encoding(instr),
     dst = (instr.opcode == MOV_IMM_MEM)
-      ? ((instr.wbit) ? "word " : "byte ") + std::to_string(instr.data)
+      ? str_instr_arg_size(instr) + std::to_string(instr.data)
       : std::string(str_register(instr.reg, instr.wbit));
 
   // If D bit is not set, then reg field is the src.
@@ -1348,9 +1778,7 @@ static void print_mov(const Instruction &instr) {
 }
 
 static void print_push_pop(const Instruction &instr) {
-  std::cout
-    << str_opcode(instr.opcode)
-    << " ";
+  print_prefix(instr);
 
   switch (instr.opcode) {
     case PUSH_REG: // fallthru
@@ -1387,21 +1815,20 @@ static void print_push_pop(const Instruction &instr) {
 }
 
 static void print_xchg(const Instruction &instr) {
-  std::cout
-    << str_opcode(instr.opcode)
-    << " ";
+  print_prefix(instr);
 
   std::string
-    src = str_reg_mem_field_encoding(instr),
-    dst = std::string(str_register(instr.reg, instr.wbit));
+    src= str_reg_mem_field_encoding(instr),
+    dst = str_instr_arg_size(instr) + std::string(str_register(instr.reg, instr.wbit));
+
+  // Prefer memory location as the dst
+  if (instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_NO_DISP) {
+    std::swap(src, dst);
+  }
 
   std::cout
     << dst
     << ", "
-    // We only want to output an explicit size if this is a memory xchg.
-    << ((instr.mod == MOD_REG_NO_DISP)
-        ? ""
-        : (instr.wbit ? "word " : "byte "))
     << src
     << std::endl;
 }
@@ -1427,9 +1854,7 @@ static void print_in_out(const Instruction &instr) {
 }
 
 static void print_load(const Instruction &instr) {
-  std::cout
-    << str_opcode(instr.opcode)
-    << " ";
+  print_prefix(instr);
 
   std::string
     src = std::string(str_register(instr.reg, instr.wbit)),
@@ -1452,20 +1877,28 @@ static void print_add_sub_cmp(const Instruction &instr) {
   std::string src, dst;
 
   switch (instr.opcode) {
-    case ADD_IMM_RM:  // fallthru
-    case ADD_IMM_ACC: // fallthru
-    case ADC_IMM_RM:  // fallthru
-    case ADC_IMM_ACC: // fallthru
-    case SUB_IMM_RM:  // fallthru
-    case SUB_IMM_ACC: // fallthru
-    case SBB_IMM_RM:  // fallthru
-    case SBB_IMM_ACC: // fallthru
-    case CMP_IMM_RM:  // fallthru
-    case CMP_IMM_ACC: {
+    case ADD_IMM_RM:   // fallthru
+    case ADD_IMM_ACC:  // fallthru
+    case ADC_IMM_RM:   // fallthru
+    case ADC_IMM_ACC:  // fallthru
+    case SUB_IMM_RM:   // fallthru
+    case SUB_IMM_ACC:  // fallthru
+    case SBB_IMM_RM:   // fallthru
+    case SBB_IMM_ACC:  // fallthru
+    case CMP_IMM_RM:   // fallthru
+    case CMP_IMM_ACC:  // fallthru
+    case AND_IMM_RM:   // fallthru
+    case AND_IMM_ACC:  // fallthru
+    case TEST_IMM_RM:  // fallthru
+    case TEST_IMM_ACC: // fallthru
+    case OR_IMM_RM:    // fallthru
+    case OR_IMM_ACC:   // fallthru
+    case XOR_IMM_RM:   // fallthru
+    case XOR_IMM_ACC:  // fallthru
+    {
       src = (instr.mod == MOD_REG_NO_DISP)
             ? str_register(instr.rm, instr.wbit)
-            // Calculated address is required.
-            : ((instr.wbit) ? "word " : "byte ") + str_reg_mem_field_encoding(instr);
+            : str_instr_arg_size(instr) + str_reg_mem_field_encoding(instr);
       dst = std::to_string(instr.data);
       break;
     }
@@ -1498,12 +1931,8 @@ static void print_inc(const Instruction &instr) {
       break;
 
     default: {
-      // Memory modes require a size to avoid ambiguity.
-      if (instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_NO_DISP) {
-        std::cout
-          << ((instr.wbit) ? "word " : "byte ");
-      }
       std::cout
+        << str_instr_arg_size(instr)
         << str_reg_mem_field_encoding(instr)
         << std::endl;
       break;
@@ -1511,10 +1940,57 @@ static void print_inc(const Instruction &instr) {
   }
 }
 
-static void print_conditional_jump(const Instruction &instr) {
+static void print_shift_rotate(const Instruction &instr) {
+  print_prefix(instr);
+  std::cout
+    << str_instr_arg_size(instr)
+    << str_reg_mem_field_encoding(instr)
+    << ", "
+    << ((instr.vbit) ? std::string(CL_STR) : "1")
+    << std::endl;
+}
+
+static void print_rep(const Instruction &instr) {
   std::cout
     << str_opcode(instr.opcode)
     << " "
+    << str_opcode((op_t) instr.data)
+    << ((instr.wbit) ? "w" : "b")
+    << std::endl;
+}
+
+static void print_control_transfer(const Instruction &instr) {
+  print_prefix(instr);
+
+  switch (instr.opcode) {
+    case CALL_INDIR_SEG:
+    case JMP_INDIR_SEG:
+      std::cout << str_reg_mem_field_encoding(instr);
+      break;
+
+    case RET_SEG_IMM_TO_SP:
+    case RET_INTERSEG_IMM_TO_SP:
+    case INT:
+      std::cout << std::to_string((i16)instr.data);
+      break;
+
+    case RET_SEG:
+    case RET_INTERSEG:
+      break;
+
+    case INT3:
+      std::cout << "3";
+      break;
+
+    default: throw std::invalid_argument("Invalid control transfer");
+  }
+
+  std::cout << std::endl;
+}
+
+static void print_conditional_jump(const Instruction &instr) {
+  print_prefix(instr);
+  std::cout
     << "label" + std::to_string(instr.jump_target)
     << "; "
     << std::to_string((i8)instr.data)
@@ -1586,41 +2062,110 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { NEG,             &print_inc },
 
   // sub
-  {SUB_RM,           &print_add_sub_cmp },
-  {SUB_IMM_RM,       &print_add_sub_cmp },
-  {SUB_IMM_ACC,      &print_add_sub_cmp },
+  { SUB_RM,           &print_add_sub_cmp },
+  { SUB_IMM_RM,       &print_add_sub_cmp },
+  { SUB_IMM_ACC,      &print_add_sub_cmp },
 
   // sub with borrow
-  {SBB_RM,           &print_add_sub_cmp },
-  {SBB_IMM_RM,       &print_add_sub_cmp },
-  {SBB_IMM_ACC,      &print_add_sub_cmp },
+  { SBB_RM,           &print_add_sub_cmp },
+  { SBB_IMM_RM,       &print_add_sub_cmp },
+  { SBB_IMM_ACC,      &print_add_sub_cmp },
 
   // cmp
-  {CMP_RM,           &print_add_sub_cmp },
-  {CMP_IMM_RM,       &print_add_sub_cmp },
-  {CMP_IMM_ACC,      &print_add_sub_cmp },
+  { CMP_RM,           &print_add_sub_cmp },
+  { CMP_IMM_RM,       &print_add_sub_cmp },
+  { CMP_IMM_ACC,      &print_add_sub_cmp },
+  { AAS,              &print_no_args },
+  { DAS,              &print_no_args },
+  { MUL,              &print_inc },
+  { IMUL,             &print_inc },
+  { AAM,              &print_no_args },
+  { DIV,              &print_inc },
+  { IDIV,             &print_inc },
+  { AAD,              &print_no_args },
+  { CBW,              &print_no_args },
+  { CWD,              &print_no_args },
+
+  // logic
+  { NOT,              &print_inc },
+  { SHL,              &print_shift_rotate },
+  { SHR,              &print_shift_rotate },
+  { SAR,              &print_shift_rotate },
+  { ROL,              &print_shift_rotate },
+  { ROR,              &print_shift_rotate },
+  { RCL,              &print_shift_rotate },
+  { RCR,              &print_shift_rotate },
+
+  { AND_RM,           &print_add_sub_cmp },
+  { AND_IMM_RM,       &print_add_sub_cmp },
+  { AND_IMM_ACC,      &print_add_sub_cmp },
+
+  { TEST_RM,          &print_add_sub_cmp },
+  { TEST_IMM_RM,      &print_add_sub_cmp },
+  { TEST_IMM_ACC,     &print_add_sub_cmp },
+
+  { OR_RM,            &print_add_sub_cmp },
+  { OR_IMM_RM,        &print_add_sub_cmp },
+  { OR_IMM_ACC,       &print_add_sub_cmp },
+
+  { XOR_RM,           &print_add_sub_cmp },
+  { XOR_IMM_RM,       &print_add_sub_cmp },
+  { XOR_IMM_ACC,      &print_add_sub_cmp },
+
+  // string manipulation
+  { REP,              &print_rep },
+
+  // control transfer
+  { CALL_INDIR_SEG,   &print_control_transfer },
+
+  // unconditional jump
+  { JMP_INDIR_SEG,    &print_control_transfer },
+
+  // return from call
+  { RET_SEG,                &print_control_transfer },
+  { RET_INTERSEG,           &print_control_transfer },
+  { RET_SEG_IMM_TO_SP,      &print_control_transfer },
+  { RET_INTERSEG_IMM_TO_SP, &print_control_transfer },
 
   // conditional jump
-  {JE,               &print_conditional_jump },
-  {JL,               &print_conditional_jump },
-  {JLE,              &print_conditional_jump },
-  {JB,               &print_conditional_jump },
-  {JBE,              &print_conditional_jump },
-  {JP,               &print_conditional_jump },
-  {JO,               &print_conditional_jump },
-  {JS,               &print_conditional_jump },
-  {JNE,              &print_conditional_jump },
-  {JNL,              &print_conditional_jump },
-  {JNLE,             &print_conditional_jump },
-  {JNB,              &print_conditional_jump },
-  {JNBE,             &print_conditional_jump },
-  {JNP,              &print_conditional_jump },
-  {JNO,              &print_conditional_jump },
-  {JNS,              &print_conditional_jump },
-  {LOOP,             &print_conditional_jump },
-  {LOOPZ,            &print_conditional_jump },
-  {LOOPNZ,           &print_conditional_jump },
-  {JCXZ,             &print_conditional_jump },
+  { JE,               &print_conditional_jump },
+  { JL,               &print_conditional_jump },
+  { JLE,              &print_conditional_jump },
+  { JB,               &print_conditional_jump },
+  { JBE,              &print_conditional_jump },
+  { JP,               &print_conditional_jump },
+  { JO,               &print_conditional_jump },
+  { JS,               &print_conditional_jump },
+  { JNE,              &print_conditional_jump },
+  { JNL,              &print_conditional_jump },
+  { JNLE,             &print_conditional_jump },
+  { JNB,              &print_conditional_jump },
+  { JNBE,             &print_conditional_jump },
+  { JNP,              &print_conditional_jump },
+  { JNO,              &print_conditional_jump },
+  { JNS,              &print_conditional_jump },
+  { LOOP,             &print_conditional_jump },
+  { LOOPZ,            &print_conditional_jump },
+  { LOOPNZ,           &print_conditional_jump },
+  { JCXZ,             &print_conditional_jump },
+
+  // interrupt
+  { INT,              &print_control_transfer },
+  { INT3,             &print_control_transfer },
+  { INTO,             &print_no_args },
+  { IRET,             &print_no_args },
+
+  // processor control
+  { CLC,              &print_no_args },
+  { CMC,              &print_no_args },
+  { STC,              &print_no_args },
+  { CLD,              &print_no_args },
+  { STD,              &print_no_args },
+  { CLI,              &print_no_args },
+  { STI,              &print_no_args },
+  { HLT,              &print_no_args },
+  { WAIT,             &print_no_args },
+  { LOCK,             &print_prefix },
 };
 
 static void print_instr(const Instruction &instr) {
