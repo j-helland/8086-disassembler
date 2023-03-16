@@ -42,6 +42,7 @@ static inline u8   asm8086_op_secondary(u8 byte)       { return asm8086_reg(byte
 // This should only be used for comparisons, not as an actual opcode.
 constexpr u16 REQUIRES_SECOND_BYTE_1 = 0x80; // 1000 0000
 constexpr u16 REQUIRES_SECOND_BYTE_2 = 0xff; // 1111 1111
+constexpr u16 REQUIRES_SECOND_BYTE_3 = 0xfe; // 1111 1110
 
 enum op_t : u16 {
   /** mov */
@@ -102,10 +103,15 @@ enum op_t : u16 {
   ADC_IMM_ACC    = 0x14,                              // 0001 0100
 
   /** increment */
-  INC_RM         = 0xfe, // 1111 1110
+  INC_RM         = (REQUIRES_SECOND_BYTE_3 << 8) | 0x0, // 1111 1110 0000
   INC_REG        = 0x40, // 0100 0000
   AAA            = 0x37, // 0011 0111
   DAA            = 0x27, // 0010 0111
+
+  /** decrement */
+  DEC_RM         = (REQUIRES_SECOND_BYTE_3 << 8) | 0x1, // 1111 1110 0001
+  DEC_REG        = 0x48, // 0100 1000
+  NEG            = 0xf6, // 1111 0110
 
   /** sub */
   SUB_RM         = 0x28,                              // 0010 1000
@@ -786,7 +792,7 @@ static Instruction parse_add_sub_cmp_imm_acc(PeekingIterator<char> &byte_stream,
   return instr;
 }
 
-static Instruction parse_inc_rm(PeekingIterator<char> &byte_stream, u16 opcode) {
+static Instruction parse_inc_dec_neg_rm(PeekingIterator<char> &byte_stream, u16 opcode) {
   Instruction instr {
     .opcode = (op_t) opcode,
     .wbit = asm8086_wbit(*byte_stream),
@@ -802,7 +808,7 @@ static Instruction parse_inc_rm(PeekingIterator<char> &byte_stream, u16 opcode) 
   return instr;
 }
 
-static Instruction parse_inc_reg(PeekingIterator<char> &byte_stream, u16 opcode) {
+static Instruction parse_inc_dec_neg_reg(PeekingIterator<char> &byte_stream, u16 opcode) {
   const Instruction instr {
     .opcode = (op_t) opcode,
     .reg = asm8086_reg(*byte_stream),
@@ -847,6 +853,7 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   // opcode requires second byte to parse. This will trigger a recursive call.
   { (op_t) REQUIRES_SECOND_BYTE_1, &parse_requires_second_byte },
   { (op_t) REQUIRES_SECOND_BYTE_2, &parse_requires_second_byte },
+  { (op_t) REQUIRES_SECOND_BYTE_3, &parse_requires_second_byte },
 
   // mov
   { MOV_IMM_REG,                   &parse_mov_imm_reg },
@@ -901,10 +908,15 @@ static const std::unordered_map<op_t, InstrParseFunc> PARSER_REGISTRY {
   { ADC_IMM_ACC,    &parse_add_sub_cmp_imm_acc },
 
   // increment
-  { INC_RM,         &parse_inc_rm },
-  { INC_REG,        &parse_inc_reg },
+  { INC_RM, &parse_inc_dec_neg_rm },
+  { INC_REG, &parse_inc_dec_neg_reg },
   { AAA,            &parse_no_args },
   { DAA,            &parse_no_args },
+
+  // decrement
+  { DEC_RM, &parse_inc_dec_neg_rm },
+  { DEC_REG, &parse_inc_dec_neg_reg },
+  { NEG, &parse_inc_dec_neg_rm },
 
   // sub
   { SUB_RM,         &parse_add_sub_cmp_rm },
@@ -991,6 +1003,8 @@ static constexpr std::string_view
   INC_STR  = "inc",
   AAA_STR  = "aaa",
   DAA_STR  = "daa",
+  DEC_STR  = "dec",
+  NEG_STR  = "neg",
   CMP_STR  = "cmp",
 
   // output to
@@ -1124,6 +1138,12 @@ static std::string_view str_opcode(op_t op) {
 
     case AAA: return AAA_STR;
     case DAA: return DAA_STR;
+
+    case DEC_RM: // fallthru
+    case DEC_REG:
+      return DEC_STR;
+
+    case NEG: return NEG_STR;
 
     // sub
     case SUB_RM:     // fallthru
@@ -1472,7 +1492,8 @@ static void print_inc(const Instruction &instr) {
     << " ";
 
   switch (instr.opcode) {
-    case INC_REG:
+    case INC_REG: // fallthru
+    case DEC_REG:
       std::cout << str_register(instr.reg, instr.wbit) << std::endl;
       break;
 
@@ -1558,6 +1579,11 @@ static const std::unordered_map<op_t, PrintInstruction> PRINT_INSTRUCTION_REGIST
   { INC_REG,         &print_inc },
   { AAA,             &print_no_args },
   { DAA,             &print_no_args },
+
+  // decrement
+  { DEC_RM,          &print_inc },
+  { DEC_REG,         &print_inc },
+  { NEG,             &print_inc },
 
   // sub
   {SUB_RM,           &print_add_sub_cmp },
