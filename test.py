@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str)
     parser.add_argument("-d", "--directory", type=str)
-    parser.add_argument("-e", "--executable", type=str, default="./cmake-build-debug/perfaware")
+    parser.add_argument("-e", "--executable", type=str, default="./build/disassemble-8086")
     args = parser.parse_args()
 
     if not args.file:

@@ -2,7 +2,7 @@
 venv/
 
 # cmake
-cmake-build*/
+build/*
 
 # project
 .idea/
