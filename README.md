@@ -5,8 +5,8 @@ Disassembler for the [8086 instruction set](https://edge.edx.org/c4x/BITSPilani/
 Run the following to generate the `build/disassemble-8086` executable.
 ```bash
 > mkdir -p build && cd build
-> cmake ..
-> cmake --build .
+> cmake -DCMAKE_BUILD_TYPE=Release ..
+> make
 ```
 
 While not strictly required, you may want to install [NASM](https://nasm.us) on your system to generate binaries from the provided `asm/*` files.
