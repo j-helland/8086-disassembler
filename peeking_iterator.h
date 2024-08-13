@@ -23,7 +23,7 @@ public:
     _end_count += (_stream == _end);
 
     return *this;
-  }
+}
 
   inline T operator*() const { return _current; }
   
