@@ -2,8 +2,7 @@
  * ASM 8086 parser data types.
  **************************************************/
 
-#ifndef PERFAWARE_TYPES_H
-#define PERFAWARE_TYPES_H
+#pragma once
 
 #include <cstdint>
 
@@ -12,7 +11,10 @@
 #define u16 uint16_t
 #define i16 int16_t
 
-constexpr static inline u16 concat(u8 hi, u8 lo) { return ((u16)hi << 8) | (u16)lo; }
+static constexpr u16 concat(u8 hi, u8 lo) 
+{ 
+  return ((u16)hi << 8) | (u16)lo; 
+}
 
 // Common first bytes of two-byte opcodes. These occupy the lower byte in order to facilitate matching against them
 // during parsing.
@@ -26,7 +28,8 @@ constexpr u16 FB_0xd5 = 0xd5; // 1101 0101
 constexpr u16 FB_0xc6 = 0xc6; // 1100 0110
 constexpr u16 FB_0x8e = 0x8e; // 1000 1110
 
-enum op_t : u16 {
+enum op_t : u16 
+{
   /** mov */
   // concat indicates that the instruction requires two bytes to fully represent.
   MOV_IMM_MEM    = concat(FB_0xc6, 0x00),      // 1100 0110 0000 0000
@@ -220,7 +223,8 @@ enum op_t : u16 {
  * descending order to ensure we don't prematurely truncate an opcade chunk and mistake it for the wrong opcode value.
  * For example, this can happen with accumulator mov, where the high 6 bits of mem to acc and acc to mem are the same.
  */
-static constexpr u16 OPCODE_MASKS[] {
+static constexpr u16 OPCODE_MASKS[] 
+{
   0xffff,  // ... 1111
   0xfffe,  // ... 1110
   0xfffc,  // ... 1100
@@ -232,13 +236,15 @@ static constexpr u16 OPCODE_MASKS[] {
  * These masks are used to extract the opcode-relevant bits from the second byte. These should be checked in descending
  * order, similarly to {@OPCODE_MASKS}.
  */
-static constexpr u8 SECOND_BYTE_MASKS[] {
+static constexpr u8 SECOND_BYTE_MASKS[] 
+{
   0xff, // 1111 1111
   0x38, // 0011 1000
   0x20, // 0010 0000
 };
 
-enum mod_t : u8 {
+enum mod_t : u8 
+{
   MOD_MEM_NO_DISP,
   MOD_MEM_BYTE_DISP,
   MOD_MEM_WORD_DISP,
@@ -250,5 +256,3 @@ enum mod_t : u8 {
 enum half_register_t    : u8 { AL, CL, DL, BL, AH, CH, DH, BH };
 enum wide_register_t    : u8 { AX, CX, DX, BX, SP, BP, SI, DI };
 enum segment_register_t : u8 { ES, CS, SS, DS };
-
-#endif //PERFAWARE_TYPES_H

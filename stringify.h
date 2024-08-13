@@ -1,5 +1,4 @@
-#ifndef PERFAWARE_STRINGIFY_H
-#define PERFAWARE_STRINGIFY_H
+#pragma once
 
 #include <iostream>
 
@@ -8,17 +7,18 @@
 /**************************************************
  * Forward declarations for core functions.
  **************************************************/
-void print_instruction(const instruction_t &instr);
+void print_instruction(const instruction_t& instr);
 
 /**************************************************
  * Parser string conversion utilities.
  **************************************************/
-static void dbg_print_instr(const instruction_t &instr) {
+static void dbg_print_instr(const instruction_t& instr) 
+{
   printf("{ opcode:%d, mod:%d, rm:%x, reg:%d, wbit:%d, dbit:%d, disp:%d, data:%d }\n", instr.opcode, instr.mod, instr.rm, instr.reg, instr.wbit, instr.dbit, instr.disp, instr.data);
 }
 
 static constexpr std::string_view
-// opcodes
+  // opcodes
   MOV_STR  = "mov",
   PUSH_STR = "push",
   POP_STR  = "pop",
@@ -58,8 +58,8 @@ static constexpr std::string_view
   OR_STR   = "or",
   XOR_STR  = "xor",
 
-// string manipulation
-REP_STR  = "rep",
+  // string manipulation
+  REP_STR  = "rep",
   MOVS_STR = "movs",
   CMPS_STR = "cmps",
   SCAS_STR = "scas",
@@ -67,8 +67,8 @@ REP_STR  = "rep",
   STOS_STR = "stos",
   CALL_STR = "call",
 
-// output to
-XLAT_STR  = "xlat",
+  // output to
+  XLAT_STR  = "xlat",
   LEA_STR   = "lea",
   LDS_STR   = "lds",
   LES_STR   = "les",
@@ -77,14 +77,14 @@ XLAT_STR  = "xlat",
   PUSHF_STR = "pushf",
   POPF_STR  = "popf",
 
-// unconditional jump
-JMP_STR    = "jmp",
+  // unconditional jump
+  JMP_STR    = "jmp",
 
-// return from call
-RET_STR    = "ret",
+  // return from call
+  RET_STR    = "ret",
 
-// conditional jump
-JE_STR     = "je",
+  // conditional jump
+  JE_STR     = "je",
   JL_STR     = "jl",
   JLE_STR    = "jle",
   JB_STR     = "jb",
@@ -105,13 +105,13 @@ JE_STR     = "je",
   LOOPNZ_STR = "loopnz",
   JCXZ_STR   = "jcxz",
 
-// interrupt
-INT_STR    = "int",
+  // interrupt
+  INT_STR    = "int",
   INTO_STR   = "into",
   IRET_STR   = "iret",
 
-// processor control
-CLC_STR    = "clc",
+  // processor control
+  CLC_STR    = "clc",
   CMC_STR    = "cmc",
   STC_STR    = "stc",
   CLD_STR    = "cld",
@@ -122,8 +122,8 @@ CLC_STR    = "clc",
   WAIT_STR   = "wait",
   LOCK_STR   = "lock",
 
-// half word-length registers
-AL_STR = "al",
+  // half word-length registers
+  AL_STR = "al",
   CL_STR = "cl",
   DL_STR = "dl",
   BL_STR = "bl",
@@ -132,8 +132,8 @@ AL_STR = "al",
   DH_STR = "dh",
   BH_STR = "bh",
 
-// word-length registers
-AX_STR = "ax",
+  // word-length registers
+  AX_STR = "ax",
   CX_STR = "cx",
   DX_STR = "dx",
   BX_STR = "bx",
@@ -142,8 +142,8 @@ AX_STR = "ax",
   SI_STR = "si",
   DI_STR = "di",
 
-// segment registers
-CS_STR = "cs",
+  // segment registers
+  CS_STR = "cs",
   DS_STR = "ds",
   ES_STR = "es",
   SS_STR = "ss";
@@ -151,8 +151,10 @@ CS_STR = "cs",
 /**
  * Convert opcode to a string representation.
  */
-static std::string_view str_opcode(op_t op) {
-  switch (op) {
+static std::string_view str_opcode(op_t op) 
+{
+  switch (op) 
+  {
     // mov
     case MOV_IMM_REG:    // fallthru
     case MOV_IMM_MEM:    // fallthru
@@ -365,8 +367,10 @@ static std::string_view str_opcode(op_t op) {
 /**
  * Convert half-word register code to a string representation.
  */
-static std::string_view str_half_register(half_register_t reg) {
-  switch (reg) {
+static std::string_view str_half_register(half_register_t reg) 
+{
+  switch (reg) 
+  {
     case AL: return AL_STR;
     case CL: return CL_STR;
     case DL: return DL_STR;
@@ -382,8 +386,10 @@ static std::string_view str_half_register(half_register_t reg) {
 /**
  * Convert word-length register code to a string representation.
  */
-static std::string_view str_wide_register(wide_register_t reg) {
-  switch (reg) {
+static std::string_view str_wide_register(wide_register_t reg) 
+{
+  switch (reg) 
+  {
     case AX: return AX_STR;
     case CX: return CX_STR;
     case DX: return DX_STR;
@@ -399,8 +405,10 @@ static std::string_view str_wide_register(wide_register_t reg) {
 /**
  * Convert two-bit segment register code into a string representation.
  */
-static inline std::string_view str_seg_register(segment_register_t reg) {
-  switch (reg) {
+static inline std::string_view str_seg_register(segment_register_t reg) 
+{
+  switch (reg) 
+  {
     case ES: return ES_STR;
     case CS: return CS_STR;
     case DS: return DS_STR;
@@ -415,16 +423,19 @@ static inline std::string_view str_seg_register(segment_register_t reg) {
  * @param reg Register code.
  * @param wide Whether the register is half or full word-length.
  */
-static inline std::string_view str_register(u8 reg, bool wide) {
+static inline std::string_view str_register(u8 reg, bool wide) 
+{
   return wide
          ? str_wide_register((wide_register_t)reg)
          : str_half_register((half_register_t)reg);
 }
 
-static std::string str_calculated_reg(const instruction_t &instr) {
+static std::string str_calculated_reg(const instruction_t& instr) 
+{
   std::string result = "[";
 
-  switch (instr.rm) {
+  switch (instr.rm) 
+  {
     case 0:
       result += "bx + si";
       break;
@@ -457,9 +468,16 @@ static std::string str_calculated_reg(const instruction_t &instr) {
 
   // Add the displacement to the reg field. We must account for the fact that the displacement field is signed when
   // we choose an arithmetic operator.
-  if (instr.disp != 0) {
-    if (instr.disp < 0) result += " - ";
-    else result += " + ";
+  if (instr.disp != 0) 
+  {
+    if (instr.disp < 0) 
+    {
+      result += " - ";
+    }
+    else 
+    {
+      result += " + ";
+    }
     result += std::to_string(abs(instr.disp));
   }
   result += "]";
@@ -470,21 +488,26 @@ static std::string str_calculated_reg(const instruction_t &instr) {
 /**
  * Handle mapping in Table 4-10 in the 8086 reference manual. Format calculated address and displacement.
  */
-static inline std::string str_reg_mem_field_encoding(const instruction_t &instr) {
+static inline std::string str_reg_mem_field_encoding(const instruction_t& instr) 
+{
   std::string result;
 
-  if (instr.opcode == MOV_IMM_REG) {
+  if (instr.opcode == MOV_IMM_REG) 
+  {
     // Immediate to register mov should only care about the data field.
     result = std::to_string(instr.data);
-
-  } else if (instr.mod == MOD_REG_NO_DISP) {
+  } 
+  else if (instr.mod == MOD_REG_NO_DISP) 
+  {
     // Register to register mov without displacement can just take the register value.
     result = std::string(str_register(instr.rm, instr.wbit));
-
-  } else if (is_direct_addressing_mode(instr.mod, instr.rm) || instr.opcode == MOV_ACC_TO_MEM || instr.opcode == MOV_MEM_TO_ACC) {
+  } 
+  else if (is_direct_addressing_mode(instr.mod, instr.rm) || instr.opcode == MOV_ACC_TO_MEM || instr.opcode == MOV_MEM_TO_ACC) 
+  {
     result = "[" + std::to_string(instr.addr) + "]";
-
-  } else {
+  } 
+  else 
+  {
     // Other cases involve a calculated register with potential displacement.
     result = str_calculated_reg(instr);
   }
@@ -492,17 +515,21 @@ static inline std::string str_reg_mem_field_encoding(const instruction_t &instr)
   return result;
 }
 
-static inline void print_no_args(const instruction_t &instr) {
+static inline void print_no_args(const instruction_t& instr) 
+{
   std::cout << str_opcode(instr.opcode) << std::endl;
 }
 
-static inline void print_prefix(const instruction_t &instr) {
+static inline void print_prefix(const instruction_t& instr) 
+{
   std::cout << str_opcode(instr.opcode) << " ";
 }
 
-static inline std::string str_instr_arg_size(const instruction_t &instr) {
+static inline std::string str_instr_arg_size(const instruction_t& instr) 
+{
   // Memory modes require a size to avoid ambiguity.
-  if (instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_NO_DISP) {
+  if (instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_NO_DISP) 
+  {
     return (instr.wbit) ? "word " : "byte ";
   }
   return "";
@@ -511,7 +538,8 @@ static inline std::string str_instr_arg_size(const instruction_t &instr) {
 /**
  * Print the ASM 8086 string representation of a parsed mov instruction to stdout.
  */
-static inline void print_mov(const instruction_t &instr) {
+static inline void print_mov(const instruction_t& instr) 
+{
   print_prefix(instr);
 
   std::string
@@ -521,7 +549,10 @@ static inline void print_mov(const instruction_t &instr) {
           : std::string(str_register(instr.reg, instr.wbit));
 
   // If D bit is not set, then reg field is the src.
-  if (!instr.dbit) std::swap(src, dst);
+  if (!instr.dbit) 
+  {
+    std::swap(src, dst);
+  }
 
   std::cout
     << dst
@@ -530,10 +561,12 @@ static inline void print_mov(const instruction_t &instr) {
     << std::endl;
 }
 
-static void print_push_pop(const instruction_t &instr) {
+static void print_push_pop(const instruction_t& instr) 
+{
   print_prefix(instr);
 
-  switch (instr.opcode) {
+  switch (instr.opcode) 
+  {
     case PUSH_REG: // fallthru
     case POP_REG:
       std::cout
@@ -567,18 +600,21 @@ static void print_push_pop(const instruction_t &instr) {
   }
 }
 
-static void print_inc(const instruction_t &instr) {
+static void print_inc(const instruction_t& instr) 
+{
   std::cout
     << str_opcode(instr.opcode)
     << " ";
 
-  switch (instr.opcode) {
+  switch (instr.opcode) 
+  {
     case INC_REG: // fallthru
     case DEC_REG:
       std::cout << str_register(instr.reg, instr.wbit) << std::endl;
       break;
 
-    default: {
+    default: 
+    {
       std::cout
         << str_instr_arg_size(instr)
         << str_reg_mem_field_encoding(instr)
@@ -588,7 +624,8 @@ static void print_inc(const instruction_t &instr) {
   }
 }
 
-static inline void print_xchg(const instruction_t &instr) {
+static inline void print_xchg(const instruction_t& instr) 
+{
   print_prefix(instr);
 
   std::string
@@ -596,7 +633,8 @@ static inline void print_xchg(const instruction_t &instr) {
     dst = str_instr_arg_size(instr) + std::string(str_register(instr.reg, instr.wbit));
 
   // Prefer memory location as the dst
-  if (instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_NO_DISP) {
+  if (instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_NO_DISP) 
+  {
     std::swap(src, dst);
   }
 
@@ -607,7 +645,8 @@ static inline void print_xchg(const instruction_t &instr) {
     << std::endl;
 }
 
-static inline void print_in_out(const instruction_t &instr) {
+static inline void print_in_out(const instruction_t& instr) 
+{
   print_prefix(instr);
 
   std::string
@@ -625,7 +664,8 @@ static inline void print_in_out(const instruction_t &instr) {
     << std::endl;
 }
 
-static inline void print_load(const instruction_t &instr) {
+static inline void print_load(const instruction_t& instr) 
+{
   print_prefix(instr);
 
   std::string
@@ -641,14 +681,16 @@ static inline void print_load(const instruction_t &instr) {
     << std::endl;
 }
 
-static void print_add_sub_cmp(const instruction_t &instr) {
+static void print_add_sub_cmp(const instruction_t& instr) 
+{
   std::cout
     << str_opcode(instr.opcode)
     << " ";
 
   std::string src, dst;
 
-  switch (instr.opcode) {
+  switch (instr.opcode) 
+  {
     case ADD_IMM_RM:   // fallthru
     case ADD_IMM_ACC:  // fallthru
     case ADC_IMM_RM:   // fallthru
@@ -675,7 +717,8 @@ static void print_add_sub_cmp(const instruction_t &instr) {
       break;
     }
 
-    default: {
+    default: 
+    {
       src = str_register(instr.reg, instr.wbit);
       dst = str_reg_mem_field_encoding(instr);
       break;
@@ -691,7 +734,8 @@ static void print_add_sub_cmp(const instruction_t &instr) {
     << std::endl;
 }
 
-static void print_shift_rotate(const instruction_t &instr) {
+static void print_shift_rotate(const instruction_t& instr) 
+{
   print_prefix(instr);
   std::cout
     << str_instr_arg_size(instr)
@@ -701,7 +745,8 @@ static void print_shift_rotate(const instruction_t &instr) {
     << std::endl;
 }
 
-static void print_rep(const instruction_t &instr) {
+static void print_rep(const instruction_t &instr) 
+{
   std::cout
     << str_opcode(instr.opcode)
     << " "
@@ -710,10 +755,12 @@ static void print_rep(const instruction_t &instr) {
     << std::endl;
 }
 
-static void print_control_transfer(const instruction_t &instr) {
+static void print_control_transfer(const instruction_t& instr) 
+{
   print_prefix(instr);
 
-  switch (instr.opcode) {
+  switch (instr.opcode) 
+  {
     case CALL_INDIR_SEG:
     case JMP_INDIR_SEG:
       std::cout << str_reg_mem_field_encoding(instr);
@@ -739,7 +786,8 @@ static void print_control_transfer(const instruction_t &instr) {
   std::cout << std::endl;
 }
 
-static inline void print_conditional_jump(const instruction_t &instr) {
+static inline void print_conditional_jump(const instruction_t& instr) 
+{
   print_prefix(instr);
   std::cout
     << "label" + std::to_string(instr.jump_target)
@@ -748,11 +796,13 @@ static inline void print_conditional_jump(const instruction_t &instr) {
     << std::endl;
 }
 
-void print_instruction(const instruction_t &instr) {
+void print_instruction(const instruction_t& instr) 
+{
   // Handle this instruction being a jump target.
   if (instr.is_labeled) printf("\nlabel%zu:\n", instr.label);
 
-  switch (instr.opcode) {
+  switch (instr.opcode) 
+  {
     case MOV_IMM_REG:
     case MOV_IMM_MEM:
     case MOV_RM:
@@ -915,11 +965,10 @@ void print_instruction(const instruction_t &instr) {
       print_prefix(instr);
       break;
 
-    default: {
+    default: 
+    {
       dbg_print_instr(instr);
       throw std::invalid_argument("No print function associated with opcode");
     }
   }
 }
-
-#endif //PERFAWARE_STRINGIFY_H

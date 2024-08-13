@@ -2,8 +2,7 @@
  * Core instruction parsing logic.
  **************************************************/
 
-#ifndef PERFAWARE_PARSE_H
-#define PERFAWARE_PARSE_H
+#pragma once
 
 #include <optional>
 
@@ -14,7 +13,7 @@
 /**************************************************
  * Forward declarations for core functions.
  **************************************************/
-std::optional<instruction_t> parse_instruction(peeking_iterator<char> &byte_stream, u16 opcode);
+std::optional<instruction_t> parse_instruction(peeking_iterator<char>& byte_stream, u16 opcode);
 
 /**************************************************
  * Helper functions to parse ASM 8086 binary fields.
@@ -49,7 +48,8 @@ static inline u8   asm8086_op_secondary(u8 byte)       { return asm8086_reg(byte
 /**************************************************
  * Helper functions to decode common byte patterns.
  **************************************************/
-static inline bool is_direct_addressing_mode(mod_t mod, u8 rm) {
+static inline bool is_direct_addressing_mode(mod_t mod, u8 rm) 
+{
   return (mod == MOD_MEM_NO_DISP) && (rm == 0x06);
 }
 
@@ -57,7 +57,8 @@ static inline bool is_direct_addressing_mode(mod_t mod, u8 rm) {
  * Parse either a byte or word-length chunk of the byte _stream. It is assumed according to the ASM 8086 spec that the
  * second byte contains the high bits of the data.
  */
-static inline u16 parse_data(peeking_iterator<char> &byte_stream, bool word) {
+static inline u16 parse_data(peeking_iterator<char>& byte_stream, bool word) 
+{
   u16
     lo = (u8)*byte_stream,
     hi = (word)
@@ -73,10 +74,13 @@ static inline u16 parse_data(peeking_iterator<char> &byte_stream, bool word) {
  * @param mod instruction_t mode.
  * @return Signed displacement value.
  */
-static i16 parse_displacement(peeking_iterator<char> &byte_stream, mod_t mod) {
-  switch (mod) {
+static i16 parse_displacement(peeking_iterator<char>& byte_stream, mod_t mod) 
+{
+  switch (mod) 
+  {
     case MOD_MEM_BYTE_DISP: // fallthru
-    case MOD_MEM_WORD_DISP: {
+    case MOD_MEM_WORD_DISP: 
+    {
       const u16 disp = parse_data(++byte_stream, mod == MOD_MEM_WORD_DISP);
       if (mod == MOD_MEM_BYTE_DISP) return (i8) disp;
       return (i16) disp;
@@ -87,18 +91,23 @@ static i16 parse_displacement(peeking_iterator<char> &byte_stream, mod_t mod) {
   }
 }
 
-static inline void parse_and_insert_displacement(instruction_t &instr, peeking_iterator<char> &byte_stream) {
-  if (is_direct_addressing_mode(instr.mod, instr.rm)) {
+static inline void parse_and_insert_displacement(instruction_t& instr, peeking_iterator<char>& byte_stream) 
+{
+  if (is_direct_addressing_mode(instr.mod, instr.rm)) 
+  {
     instr.addr = parse_data(++byte_stream, true);
     instr.bytes_read += 1 + instr.wbit;
-  } else {
+  } 
+  else 
+  {
     instr.disp = parse_displacement(byte_stream, instr.mod);
     if (instr.mod == MOD_MEM_BYTE_DISP) ++instr.bytes_read;
     if (instr.mod == MOD_MEM_WORD_DISP) instr.bytes_read += 2;
   }
 }
 
-static inline void parse_and_insert_mod_reg_rm(instruction_t &instr, peeking_iterator<char> &byte_stream) {
+static inline void parse_and_insert_mod_reg_rm(instruction_t& instr, peeking_iterator<char>& byte_stream) 
+{
   const u8 mod_reg_rm_byte = *byte_stream;
 
   instr.mod = (mod_t) asm8086_mode(mod_reg_rm_byte);
@@ -106,9 +115,11 @@ static inline void parse_and_insert_mod_reg_rm(instruction_t &instr, peeking_ite
   instr.rm = asm8086_rm(mod_reg_rm_byte);
 }
 
-static inline instruction_t parse_one_byte_no_args(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_one_byte_no_args(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   ++byte_stream;
-  return {
+  return 
+  {
     .opcode = (op_t) opcode,
 
     // metadata
@@ -116,10 +127,12 @@ static inline instruction_t parse_one_byte_no_args(peeking_iterator<char> &byte_
   };
 }
 
-static inline instruction_t parse_two_bytes_no_args(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_two_bytes_no_args(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   ++byte_stream;
   ++byte_stream;
-  return {
+  return 
+  {
     .opcode = (op_t) opcode,
 
     // metadata
@@ -127,22 +140,26 @@ static inline instruction_t parse_two_bytes_no_args(peeking_iterator<char> &byte
   };
 }
 
-static inline instruction_t parse_one_byte_with_reg(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_one_byte_with_reg(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const u8 reg = asm8086_reg(*byte_stream);
   instruction_t instr = parse_one_byte_no_args(byte_stream, opcode);
   instr.reg = reg;
   return instr;
 }
 
-static inline instruction_t parse_one_byte_with_wbit(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_one_byte_with_wbit(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const bool wbit = asm8086_wbit(*byte_stream);
   instruction_t instr = parse_one_byte_no_args(byte_stream, opcode);
   instr.wbit = wbit;
   return instr;
 }
 
-static inline instruction_t parse_one_byte_with_byte_data(peeking_iterator<char> &byte_stream, u16 opcode) {
-  const instruction_t instr {
+static inline instruction_t parse_one_byte_with_byte_data(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
+  const instruction_t instr 
+  {
     .opcode = (op_t) opcode,
     .wbit = asm8086_wbit(*byte_stream),
     .data = parse_data(++byte_stream, false),
@@ -155,8 +172,10 @@ static inline instruction_t parse_one_byte_with_byte_data(peeking_iterator<char>
   return instr;
 }
 
-static inline instruction_t parse_one_byte_with_word_data(peeking_iterator<char> &byte_stream, u16 opcode) {
-  const instruction_t instr {
+static inline instruction_t parse_one_byte_with_word_data(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
+  const instruction_t instr
+  {
     .opcode = (op_t) opcode,
     .wbit = asm8086_wbit(*byte_stream),
     .data = parse_data(++byte_stream, true),
@@ -169,14 +188,17 @@ static inline instruction_t parse_one_byte_with_word_data(peeking_iterator<char>
   return instr;
 }
 
-static inline instruction_t parse_one_byte_with_address(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_one_byte_with_address(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_one_byte_with_word_data(byte_stream, opcode);
   std::swap(instr.data, instr.addr);
   return instr;
 }
 
-static inline instruction_t parse_wbit_mod_reg_rm_disp(peeking_iterator<char> &byte_stream, u16 opcode) {
-  instruction_t instr {
+static inline instruction_t parse_wbit_mod_reg_rm_disp(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
+  instruction_t instr 
+  {
     .opcode = (op_t) opcode,
     .wbit = asm8086_wbit(*byte_stream),
 
@@ -191,18 +213,21 @@ static inline instruction_t parse_wbit_mod_reg_rm_disp(peeking_iterator<char> &b
   return instr;
 }
 
-static inline instruction_t parse_dbit_wbit_mod_reg_rm_disp(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_dbit_wbit_mod_reg_rm_disp(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const bool dbit = asm8086_dbit(*byte_stream);
   instruction_t instr = parse_wbit_mod_reg_rm_disp(byte_stream, opcode);
   instr.dbit = dbit;
   return instr;
 }
 
-static inline instruction_t parse_vbit_wbit_mod_reg_rm_disp(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_vbit_wbit_mod_reg_rm_disp(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   return parse_dbit_wbit_mod_reg_rm_disp(byte_stream, opcode);
 }
 
-static inline instruction_t parse_sbit_mod_reg_rm_disp_data(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_sbit_mod_reg_rm_disp_data(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_dbit_wbit_mod_reg_rm_disp(byte_stream, opcode);
   const bool sign_extend = instr.dbit;
   instr.dbit = true;
@@ -215,7 +240,8 @@ static inline instruction_t parse_sbit_mod_reg_rm_disp_data(peeking_iterator<cha
   return instr;
 }
 
-static inline instruction_t parse_one_byte_wbit_data_acc(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_one_byte_wbit_data_acc(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_one_byte_with_wbit(byte_stream, opcode);
   instr.data = parse_data(byte_stream, instr.wbit);
 
@@ -227,7 +253,8 @@ static inline instruction_t parse_one_byte_wbit_data_acc(peeking_iterator<char> 
   return instr;
 }
 
-static inline instruction_t parse_rep(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_rep(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_one_byte_no_args(byte_stream, opcode);
 
   // Store the string manipulation opcode in the data field
@@ -239,7 +266,8 @@ static inline instruction_t parse_rep(peeking_iterator<char> &byte_stream, u16 o
   return instr;
 }
 
-static inline instruction_t parse_mov_imm_reg(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_mov_imm_reg(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const bool wbit = asm8086_wbit(*byte_stream, 3);
   const u8 reg = asm8086_reg(*byte_stream);
 
@@ -254,14 +282,16 @@ static inline instruction_t parse_mov_imm_reg(peeking_iterator<char> &byte_strea
   return instr;
 }
 
-static inline instruction_t parse_mov_rm(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_mov_rm(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const bool dbit = asm8086_dbit(*byte_stream);
   instruction_t instr = parse_wbit_mod_reg_rm_disp(byte_stream, opcode);
   instr.dbit = dbit;
   return instr;
 }
 
-static inline instruction_t parse_mov_imm_mem(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_mov_imm_mem(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_wbit_mod_reg_rm_disp(byte_stream, opcode);
   instr.data = parse_data(byte_stream, instr.wbit);
   instr.bytes_read = 4 + instr.wbit + (instr.mod == MOD_MEM_WORD_DISP);
@@ -269,14 +299,16 @@ static inline instruction_t parse_mov_imm_mem(peeking_iterator<char> &byte_strea
   return instr;
 }
 
-static inline instruction_t parse_mov_acc_to_mem(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_mov_acc_to_mem(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const bool wbit = asm8086_wbit(*byte_stream);
   instruction_t instr = parse_one_byte_with_address(byte_stream, opcode);
   instr.wbit = wbit;
   return instr;
 }
 
-static inline instruction_t parse_mov_mem_to_acc(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_mov_mem_to_acc(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const bool wbit = asm8086_wbit(*byte_stream);
   instruction_t instr = parse_one_byte_with_address(byte_stream, opcode);
   instr.wbit = wbit;
@@ -284,33 +316,38 @@ static inline instruction_t parse_mov_mem_to_acc(peeking_iterator<char> &byte_st
   return instr;
 }
 
-static inline instruction_t parse_push_pop_seg(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_push_pop_seg(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   const u8 reg = asm8086_reg_seg(*byte_stream, 3);
   instruction_t instr = parse_one_byte_no_args(byte_stream, opcode);
   instr.reg = reg;
   return instr;
 }
 
-static inline instruction_t parse_one_byte_reg_wtrue_nodisp(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_one_byte_reg_wtrue_nodisp(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_one_byte_with_reg(byte_stream, opcode);
   instr.mod = MOD_REG_NO_DISP;
   instr.wbit = true;
   return instr;
 }
 
-static inline instruction_t parse_in_out_fix(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_in_out_fix(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_one_byte_with_byte_data(byte_stream, opcode);
   instr.reg = AX;
   return instr;
 }
 
-static inline instruction_t parse_in_out_var(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_in_out_var(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_one_byte_with_wbit(byte_stream, opcode);
   instr.reg = AX;
   return instr;
 }
 
-static inline instruction_t parse_load(peeking_iterator<char> &byte_stream, u16 opcode) {
+static inline instruction_t parse_load(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   instruction_t instr = parse_wbit_mod_reg_rm_disp(byte_stream, opcode);
   instr.wbit = true;
   return instr;
@@ -319,26 +356,34 @@ static inline instruction_t parse_load(peeking_iterator<char> &byte_stream, u16 
 /**************************************************
  * Core instruction parsing flow.
  **************************************************/
-static std::optional<instruction_t> parse_requires_second_byte(peeking_iterator<char> &byte_stream, u16 opcode) {
-  for (const u8 mask : SECOND_BYTE_MASKS) {
+static std::optional<instruction_t> parse_requires_second_byte(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
+  for (const u8 mask : SECOND_BYTE_MASKS) 
+  {
     u16 opcode_candidate = concat(opcode, mask & byte_stream.peek());
 
     // Handle special case: ADD_IMM_RM code is the same as FB_0x80 code.
-    if (opcode_candidate == ADD_IMM_RM) {
+    if (opcode_candidate == ADD_IMM_RM) 
+    {
       return std::make_optional(parse_sbit_mod_reg_rm_disp_data(byte_stream, opcode_candidate));
     }
 
     const std::optional<instruction_t> instr = parse_instruction(byte_stream, opcode_candidate);
-    if (!instr.has_value()) continue;
+    if (!instr.has_value()) 
+    {
+      continue;
+    }
     return instr;
   }
   return std::nullopt;
 }
 
-static std::optional<instruction_t> match_and_parse(peeking_iterator<char> &byte_stream, u16 op) {
+static std::optional<instruction_t> match_and_parse(peeking_iterator<char>& byte_stream, u16 op) 
+{
   std::optional<instruction_t> instr = std::nullopt;
 
-  switch (op) {
+  switch (op) 
+  {
     // If the first opcode byte matches any of these, it means that a second byte is required to fully assemble the
     // opcode. This triggers a recursive call.
     case FB_0x80:
@@ -502,15 +547,15 @@ static std::optional<instruction_t> match_and_parse(peeking_iterator<char> &byte
 /**
  * Parse a potentially multi-byte instruction sequence from the byte _stream.
  */
-std::optional<instruction_t> parse_instruction(peeking_iterator<char> &byte_stream, u16 opcode) {
+std::optional<instruction_t> parse_instruction(peeking_iterator<char>& byte_stream, u16 opcode) 
+{
   // The opcode masks are handled in descending order to avoid truncating the byte prematurely. Otherwise, we could pick
   // the wrong opcode value.
-  for (u16 mask : OPCODE_MASKS) {
+  for (u16 mask : OPCODE_MASKS) 
+  {
     const auto instr = match_and_parse(byte_stream, mask & opcode);
     if (!instr.has_value()) continue;
     return instr;
   }
   return std::nullopt;
 }
-
-#endif //PERFAWARE_PARSE_H
