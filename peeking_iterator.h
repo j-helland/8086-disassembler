@@ -3,18 +3,21 @@
 #include <istream>
 
 template<typename T>
-class peeking_iterator 
+class PeekingIterator 
 {
 public:
-  explicit peeking_iterator(std::istreambuf_iterator<T>&& stream) :
+  explicit PeekingIterator(std::istreambuf_iterator<T>&& stream) :
     _end_count(0),
     _stream(stream),
     _current(*(_stream++)) 
   {}
 
-  peeking_iterator& operator++()
+  PeekingIterator& operator++()
   {
-    if (is_end()) return *this;
+    if (is_end()) 
+    {
+      return *this;
+    }
 
     if (_end_count == 0) 
     {

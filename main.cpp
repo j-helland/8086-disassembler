@@ -32,10 +32,10 @@ int main(int argc, char** argv)
 
   // Read binary into buffer.
   std::ifstream input(opts.fpath, std::ios::binary);
-  peeking_iterator<char> byte_stream(std::istreambuf_iterator<char>{input});
+  PeekingIterator<char> byte_stream(std::istreambuf_iterator<char>{input});
 
   // Disassemble the binary according to ASM 8086 grammar.
-  instruction_stream instr_stream;
+  InstructionStream instr_stream;
   while (!byte_stream.is_end()) 
   {
     std::optional<instruction_t> instr = parse_instruction(byte_stream, (u8)*byte_stream);
@@ -52,11 +52,9 @@ int main(int argc, char** argv)
   // Do a second pass to handle labels in jump instructions.
   instr_stream.process_jumps();
 
-  // Write the parsed instruction stream to stdout.
+  // Final output.
   for (const instruction_t& instr : instr_stream) 
   {
     print_instruction(instr);
   }
-
-  return 0;
 }
