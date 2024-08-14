@@ -13,9 +13,9 @@
 /**
  * Parse a potentially multi-byte instruction sequence from the byte _stream.
  */
-std::optional<instruction_t> parse_instruction(PeekingIterator<char>& byte_stream, u16 opcode);
+std::optional<instruction_t> parseInstruction(PeekingIterator<char>& byte_stream, u16 opcode);
 
 namespace utils
 {
-  bool is_direct_addressing_mode(mod_t mod, u8 rm);
+  bool isDirectAddressingMode(mod_t mod, u8 rm);
 }

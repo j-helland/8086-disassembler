@@ -81,7 +81,7 @@ class InstructionStream
 
 public:  // methods
   /** Push an instruction onto the instruction stack. This will track any passed jump instructions automatically. */
-  void push_back(instruction_t&& instr); 
+  void pushBack(instruction_t&& instr); 
 
   /**
    * Iterates through all jump instructions observed during push_back operations and assigns labels to each distinct
@@ -95,7 +95,7 @@ public:  // methods
    *
    * @throws std::out_of_range When a jump would land at a misaligned address with respect to the instruction stream.
    */
-  void process_jumps();
+  void processJumps();
 
   iterator_t begin() { return _stream.begin(); }
   iterator_t end() { return _stream.end(); }
@@ -103,7 +103,7 @@ public:  // methods
   const_iterator_t cend() { return _stream.cend(); }  
 
 private:  // methods
-  bool is_conditional_jump_instr(const instruction_t& instr);
+  bool isConditionalJumpInstr(const instruction_t& instr);
 
 private:  // data
   /** holds the instructions */

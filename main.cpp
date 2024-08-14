@@ -13,7 +13,7 @@ struct UserOpts
   std::string fpath;
 };
 
-static UserOpts parse_opts(int argc, char** argv) 
+static UserOpts parseOpts(int argc, char** argv) 
 {
   if (argc != 2) 
   {
@@ -28,20 +28,20 @@ static UserOpts parse_opts(int argc, char** argv)
 int main(int argc, char** argv) 
 {
   // Parse commandline args.
-  const UserOpts opts = parse_opts(argc, argv);
+  const UserOpts opts = parseOpts(argc, argv);
 
   // Read binary into buffer.
-  std::ifstream input(opts.fpath, std::ios::binary);
-  PeekingIterator<char> byte_stream(std::istreambuf_iterator<char>{input});
+  std::ifstream input{ opts.fpath, std::ios::binary };
+  PeekingIterator<char> byte_stream{ std::istreambuf_iterator<char>{input} };
 
   // Disassemble the binary according to ASM 8086 grammar.
   InstructionStream instr_stream;
   while (!byte_stream.is_end()) 
   {
-    std::optional<instruction_t> instr = parse_instruction(byte_stream, (u8)*byte_stream);
+    std::optional<instruction_t> instr = parseInstruction(byte_stream, (u8)*byte_stream);
     if (instr.has_value()) 
     {
-      instr_stream.push_back(std::move(instr.value()));
+      instr_stream.pushBack(std::move(instr.value()));
     }
     else 
     {
@@ -50,11 +50,11 @@ int main(int argc, char** argv)
   }
 
   // Do a second pass to handle labels in jump instructions.
-  instr_stream.process_jumps();
+  instr_stream.processJumps();
 
   // Final output.
   for (const instruction_t& instr : instr_stream) 
   {
-    print_instruction(instr);
+    printInstruction(instr);
   }
 }

@@ -2,6 +2,7 @@
 
 #include <istream>
 
+/** Generic iterator class that allows peeking of next value in the stream. */
 template<typename T>
 class PeekingIterator 
 {

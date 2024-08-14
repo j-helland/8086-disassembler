@@ -6,7 +6,7 @@
 /**************************************************
  * Parser string conversion utilities.
  **************************************************/
-static void dbg_print_instr(const instruction_t& instr) 
+static void dbg_printInstr(const instruction_t& instr) 
 {
   printf("{ opcode:%d, mod:%d, rm:%x, reg:%d, wbit:%d, dbit:%d, disp:%d, data:%d }\n", instr.opcode, instr.mod, instr.rm, instr.reg, instr.wbit, instr.dbit, instr.disp, instr.data);
 }
@@ -145,7 +145,7 @@ static constexpr std::string_view
 /**
  * Convert opcode to a string representation.
  */
-static std::string_view str_opcode(op_t op) 
+static std::string_view strOpcode(op_t op) 
 {
   switch (op) 
   {
@@ -361,7 +361,7 @@ static std::string_view str_opcode(op_t op)
 /**
  * Convert half-word register code to a string representation.
  */
-static std::string_view str_half_register(half_register_t reg) 
+static std::string_view strHalfRegister(half_register_t reg) 
 {
   switch (reg) 
   {
@@ -380,7 +380,7 @@ static std::string_view str_half_register(half_register_t reg)
 /**
  * Convert word-length register code to a string representation.
  */
-static std::string_view str_wide_register(wide_register_t reg) 
+static std::string_view strWideRegister(wide_register_t reg) 
 {
   switch (reg) 
   {
@@ -399,7 +399,7 @@ static std::string_view str_wide_register(wide_register_t reg)
 /**
  * Convert two-bit segment register code into a string representation.
  */
-static inline std::string_view str_seg_register(segment_register_t reg) 
+static inline std::string_view strSegRegister(segment_register_t reg) 
 {
   switch (reg) 
   {
@@ -417,14 +417,14 @@ static inline std::string_view str_seg_register(segment_register_t reg)
  * @param reg Register code.
  * @param wide Whether the register is half or full word-length.
  */
-static inline std::string_view str_register(u8 reg, bool wide) 
+static inline std::string_view strRegister(u8 reg, bool wide) 
 {
   return wide
-         ? str_wide_register((wide_register_t)reg)
-         : str_half_register((half_register_t)reg);
+         ? strWideRegister((wide_register_t)reg)
+         : strHalfRegister((half_register_t)reg);
 }
 
-static std::string str_calculated_reg(const instruction_t& instr) 
+static std::string strCalculatedRegister(const instruction_t& instr) 
 {
   std::string result = "[";
 
@@ -482,7 +482,7 @@ static std::string str_calculated_reg(const instruction_t& instr)
 /**
  * Handle mapping in Table 4-10 in the 8086 reference manual. Format calculated address and displacement.
  */
-static inline std::string str_reg_mem_field_encoding(const instruction_t& instr) 
+static inline std::string strRegMemFieldEncoding(const instruction_t& instr) 
 {
   std::string result;
 
@@ -494,32 +494,32 @@ static inline std::string str_reg_mem_field_encoding(const instruction_t& instr)
   else if (instr.mod == MOD_REG_NO_DISP) 
   {
     // Register to register mov without displacement can just take the register value.
-    result = std::string(str_register(instr.rm, instr.wbit));
+    result = std::string(strRegister(instr.rm, instr.wbit));
   } 
-  else if (utils::is_direct_addressing_mode(instr.mod, instr.rm) || instr.opcode == MOV_ACC_TO_MEM || instr.opcode == MOV_MEM_TO_ACC) 
+  else if (utils::isDirectAddressingMode(instr.mod, instr.rm) || instr.opcode == MOV_ACC_TO_MEM || instr.opcode == MOV_MEM_TO_ACC) 
   {
     result = "[" + std::to_string(instr.addr) + "]";
   } 
   else 
   {
     // Other cases involve a calculated register with potential displacement.
-    result = str_calculated_reg(instr);
+    result = strCalculatedRegister(instr);
   }
 
   return result;
 }
 
-static inline void print_no_args(const instruction_t& instr) 
+static inline void printNoArgs(const instruction_t& instr) 
 {
-  std::cout << str_opcode(instr.opcode) << std::endl;
+  std::cout << strOpcode(instr.opcode) << std::endl;
 }
 
-static inline void print_prefix(const instruction_t& instr) 
+static inline void printPrefix(const instruction_t& instr) 
 {
-  std::cout << str_opcode(instr.opcode) << " ";
+  std::cout << strOpcode(instr.opcode) << " ";
 }
 
-static inline std::string str_instr_arg_size(const instruction_t& instr) 
+static inline std::string strInstrArgSize(const instruction_t& instr) 
 {
   // Memory modes require a size to avoid ambiguity.
   if (instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_NO_DISP) 
@@ -532,15 +532,15 @@ static inline std::string str_instr_arg_size(const instruction_t& instr)
 /**
  * Print the ASM 8086 string representation of a parsed mov instruction to stdout.
  */
-static inline void print_mov(const instruction_t& instr) 
+static inline void printMov(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
 
   std::string
-    src = str_reg_mem_field_encoding(instr),
+    src = strRegMemFieldEncoding(instr),
     dst = (instr.opcode == MOV_IMM_MEM)
-          ? str_instr_arg_size(instr) + std::to_string(instr.data)
-          : std::string(str_register(instr.reg, instr.wbit));
+          ? strInstrArgSize(instr) + std::to_string(instr.data)
+          : std::string(strRegister(instr.reg, instr.wbit));
 
   // If D bit is not set, then reg field is the src.
   if (!instr.dbit) 
@@ -555,9 +555,9 @@ static inline void print_mov(const instruction_t& instr)
     << std::endl;
 }
 
-static void print_push_pop(const instruction_t& instr) 
+static void printPushPop(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
 
   switch (instr.opcode) 
   {
@@ -565,7 +565,7 @@ static void print_push_pop(const instruction_t& instr)
     case POP_REG:
       std::cout
         // Half register push is not supported by the ASM 8086 standard.
-        << str_register(instr.reg, true)
+        << strRegister(instr.reg, true)
         << std::endl;
       break;
 
@@ -574,7 +574,7 @@ static void print_push_pop(const instruction_t& instr)
       std::cout
         // Byte sized push is not supported by tha ASM 8086 standard.
         << "word "
-        << str_reg_mem_field_encoding(instr)
+        << strRegMemFieldEncoding(instr)
         << std::endl;
       break;
 
@@ -586,7 +586,7 @@ static void print_push_pop(const instruction_t& instr)
     case POP_SEG_SS:  // fallthru
     case POP_SEG_DS:
       std::cout
-        << str_seg_register((segment_register_t) instr.reg)
+        << strSegRegister((segment_register_t) instr.reg)
         << std::endl;
       break;
 
@@ -594,37 +594,37 @@ static void print_push_pop(const instruction_t& instr)
   }
 }
 
-static void print_inc(const instruction_t& instr) 
+static void printInc(const instruction_t& instr) 
 {
   std::cout
-    << str_opcode(instr.opcode)
+    << strOpcode(instr.opcode)
     << " ";
 
   switch (instr.opcode) 
   {
     case INC_REG: // fallthru
     case DEC_REG:
-      std::cout << str_register(instr.reg, instr.wbit) << std::endl;
+      std::cout << strRegister(instr.reg, instr.wbit) << std::endl;
       break;
 
     default: 
     {
       std::cout
-        << str_instr_arg_size(instr)
-        << str_reg_mem_field_encoding(instr)
+        << strInstrArgSize(instr)
+        << strRegMemFieldEncoding(instr)
         << std::endl;
       break;
     }
   }
 }
 
-static inline void print_xchg(const instruction_t& instr) 
+static inline void printXchg(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
 
   std::string
-    src= str_reg_mem_field_encoding(instr),
-    dst = str_instr_arg_size(instr) + std::string(str_register(instr.reg, instr.wbit));
+    src= strRegMemFieldEncoding(instr),
+    dst = strInstrArgSize(instr) + std::string(strRegister(instr.reg, instr.wbit));
 
   // Prefer memory location as the dst
   if (instr.mod == MOD_MEM_WORD_DISP || instr.mod == MOD_MEM_BYTE_DISP || instr.mod == MOD_MEM_NO_DISP) 
@@ -639,12 +639,12 @@ static inline void print_xchg(const instruction_t& instr)
     << std::endl;
 }
 
-static inline void print_in_out(const instruction_t& instr) 
+static inline void printInOut(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
 
   std::string
-    src = std::string(str_register(instr.reg, instr.wbit)),
+    src = std::string(strRegister(instr.reg, instr.wbit)),
     dst = (instr.opcode == IN_FIX || instr.opcode == OUT_FIX)
           ? std::to_string(instr.data)
           : std::string(DX_STR);
@@ -661,13 +661,13 @@ static inline void print_in_out(const instruction_t& instr)
     << std::endl;
 }
 
-static inline void print_load(const instruction_t& instr) 
+static inline void printLoad(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
 
   std::string
-    src = std::string(str_register(instr.reg, instr.wbit)),
-    dst = str_reg_mem_field_encoding(instr);
+    src = std::string(strRegister(instr.reg, instr.wbit)),
+    dst = strRegMemFieldEncoding(instr);
 
   if (instr.dbit) 
   {
@@ -681,10 +681,10 @@ static inline void print_load(const instruction_t& instr)
     << std::endl;
 }
 
-static void print_add_sub_cmp(const instruction_t& instr) 
+static void printAddSubCmp(const instruction_t& instr) 
 {
   std::cout
-    << str_opcode(instr.opcode)
+    << strOpcode(instr.opcode)
     << " ";
 
   std::string src, dst;
@@ -711,16 +711,16 @@ static void print_add_sub_cmp(const instruction_t& instr)
     case XOR_IMM_ACC:  // fallthru
     {
       src = (instr.mod == MOD_REG_NO_DISP)
-            ? str_register(instr.rm, instr.wbit)
-            : str_instr_arg_size(instr) + str_reg_mem_field_encoding(instr);
+            ? strRegister(instr.rm, instr.wbit)
+            : strInstrArgSize(instr) + strRegMemFieldEncoding(instr);
       dst = std::to_string(instr.data);
       break;
     }
 
     default: 
     {
-      src = str_register(instr.reg, instr.wbit);
-      dst = str_reg_mem_field_encoding(instr);
+      src = strRegister(instr.reg, instr.wbit);
+      dst = strRegMemFieldEncoding(instr);
       break;
     }
   }
@@ -737,36 +737,36 @@ static void print_add_sub_cmp(const instruction_t& instr)
     << std::endl;
 }
 
-static void print_shift_rotate(const instruction_t& instr) 
+static void printShiftRotate(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
   std::cout
-    << str_instr_arg_size(instr)
-    << str_reg_mem_field_encoding(instr)
+    << strInstrArgSize(instr)
+    << strRegMemFieldEncoding(instr)
     << ", "
     << ((instr.vbit) ? std::string(CL_STR) : "1")
     << std::endl;
 }
 
-static void print_rep(const instruction_t &instr) 
+static void printRep(const instruction_t &instr) 
 {
   std::cout
-    << str_opcode(instr.opcode)
+    << strOpcode(instr.opcode)
     << " "
-    << str_opcode((op_t) instr.data)
+    << strOpcode((op_t) instr.data)
     << ((instr.wbit) ? "w" : "b")
     << std::endl;
 }
 
-static void print_control_transfer(const instruction_t& instr) 
+static void printControlTransfer(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
 
   switch (instr.opcode) 
   {
     case CALL_INDIR_SEG:
     case JMP_INDIR_SEG:
-      std::cout << str_reg_mem_field_encoding(instr);
+      std::cout << strRegMemFieldEncoding(instr);
       break;
 
     case RET_SEG_IMM_TO_SP:
@@ -789,9 +789,9 @@ static void print_control_transfer(const instruction_t& instr)
   std::cout << std::endl;
 }
 
-static inline void print_conditional_jump(const instruction_t& instr) 
+static inline void printConditionalJump(const instruction_t& instr) 
 {
-  print_prefix(instr);
+  printPrefix(instr);
   std::cout
     << "label" + std::to_string(instr.jump_target)
     << "; "
@@ -802,7 +802,7 @@ static inline void print_conditional_jump(const instruction_t& instr)
 /**************************************************
  * Core API.
  **************************************************/
-void print_instruction(const instruction_t& instr) 
+void printInstruction(const instruction_t& instr) 
 {
   // Handle this instruction being a jump target.
   if (instr.is_labeled) 
@@ -817,7 +817,7 @@ void print_instruction(const instruction_t& instr)
     case MOV_RM:
     case MOV_ACC_TO_MEM:
     case MOV_MEM_TO_ACC:
-      print_mov(instr);
+      printMov(instr);
       break;
 
     case PUSH_REG:
@@ -831,19 +831,19 @@ void print_instruction(const instruction_t& instr)
     case POP_SEG_ES:
     case POP_SEG_DS:
     case POP_SEG_SS:
-      print_push_pop(instr);
+      printPushPop(instr);
       break;
 
     case XCHG_REG_ACC:
     case XCHG_RM:
-      print_xchg(instr);
+      printXchg(instr);
       break;
 
     case IN_FIX:
     case IN_VAR:
     case OUT_FIX:
     case OUT_VAR:
-      print_in_out(instr);
+      printInOut(instr);
       break;
 
     case XLAT:
@@ -870,13 +870,13 @@ void print_instruction(const instruction_t& instr)
     case STI:
     case HLT:
     case WAIT:
-      print_no_args(instr);
+      printNoArgs(instr);
       break;
 
     case LEA:
     case LDS:
     case LES:
-      print_load(instr);
+      printLoad(instr);
       break;
 
     case ADD_RM:
@@ -906,7 +906,7 @@ void print_instruction(const instruction_t& instr)
     case XOR_RM:
     case XOR_IMM_RM:
     case XOR_IMM_ACC:
-      print_add_sub_cmp(instr);
+      printAddSubCmp(instr);
       break;
 
     case INC_RM:
@@ -919,7 +919,7 @@ void print_instruction(const instruction_t& instr)
     case DIV:
     case IDIV:
     case NOT:
-      print_inc(instr);
+      printInc(instr);
       break;
 
     case SHL:
@@ -929,11 +929,11 @@ void print_instruction(const instruction_t& instr)
     case ROR:
     case RCL:
     case RCR:
-      print_shift_rotate(instr);
+      printShiftRotate(instr);
       break;
 
     case REP:
-      print_rep(instr);
+      printRep(instr);
       break;
 
     case CALL_INDIR_SEG:
@@ -944,7 +944,7 @@ void print_instruction(const instruction_t& instr)
     case RET_INTERSEG_IMM_TO_SP:
     case INT:
     case INT3:
-      print_control_transfer(instr);
+      printControlTransfer(instr);
       break;
 
     case JE:
@@ -967,16 +967,16 @@ void print_instruction(const instruction_t& instr)
     case LOOPZ:
     case LOOPNZ:
     case JCXZ:
-      print_conditional_jump(instr);
+      printConditionalJump(instr);
       break;
 
     case LOCK:
-      print_prefix(instr);
+      printPrefix(instr);
       break;
 
     default: 
     {
-      dbg_print_instr(instr);
+      dbg_printInstr(instr);
       throw std::invalid_argument("No print function associated with opcode");
     }
   }

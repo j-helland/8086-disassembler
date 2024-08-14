@@ -8,4 +8,4 @@
 /**
  * Prints an instruction to STDOUT with a newline.
  */
-void print_instruction(const instruction_t& instr);
+void printInstruction(const instruction_t& instr);

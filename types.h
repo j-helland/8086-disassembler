@@ -11,6 +11,7 @@
 #define u16 uint16_t
 #define i16 int16_t
 
+/** Concat bits of two 8-bit integers. This is a compile-time convenience purely to make creating op codes less painful. */
 static constexpr u16 concat(u8 hi, u8 lo) 
 { 
   return ((u16)hi << 8) | (u16)lo; 
@@ -243,6 +244,11 @@ static constexpr u8 SECOND_BYTE_MASKS[]
   0x20, // 0010 0000
 };
 
+/** 
+ * Instruction modifiers.
+ * <p> Dictates whether the instruction involves memory or registers, and whether the reg field is displaced.
+ * <p> Dictates whether the displacement field is byte or word length.
+ */
 enum mod_t : u8 
 {
   MOD_MEM_NO_DISP,
@@ -253,6 +259,7 @@ enum mod_t : u8
   MOD_INVALID,
 };
 
+/** 8086 registers names per the manual. */
 enum half_register_t    : u8 { AL, CL, DL, BL, AH, CH, DH, BH };
 enum wide_register_t    : u8 { AX, CX, DX, BX, SP, BP, SI, DI };
 enum segment_register_t : u8 { ES, CS, SS, DS };

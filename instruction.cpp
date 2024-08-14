@@ -1,15 +1,15 @@
 #include "instruction.h"
 
-void InstructionStream::push_back(instruction_t &&instr)
+void InstructionStream::pushBack(instruction_t &&instr)
 {
-  if (is_conditional_jump_instr(instr))
+  if (isConditionalJumpInstr(instr))
   {
     _jumps.push_back(_stream.size());
   }
   _stream.push_back(std::move(instr));
 }
 
-void InstructionStream::process_jumps()
+void InstructionStream::processJumps()
 {
   if (_jumps.empty()) 
   {
@@ -67,7 +67,7 @@ void InstructionStream::process_jumps()
   cleanup();
 }
 
-bool InstructionStream::is_conditional_jump_instr(const instruction_t& instr)
+bool InstructionStream::isConditionalJumpInstr(const instruction_t& instr)
 {
     switch (instr.opcode) 
     {
