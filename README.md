@@ -45,4 +45,9 @@ OK asm/p3-mem-mov.asm
 ...
 ```
 
+## Static Analysis
+This code is:
+- Warning free under `-Wall` and `-Wextra`.
+- Leak free via macOS `leaks`.
+- Clean via AddressSanitizer (`-fsanitize=address` for debug builds).
 
